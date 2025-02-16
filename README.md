@@ -5,7 +5,7 @@
 example:
 
 ```python
-from oxhttp import HttpServer, get
+from oxhttp.oxhttp import HttpServer, get
 
 app = HttpServer(("127.0.0.1", 5555))
 
