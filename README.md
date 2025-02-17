@@ -5,12 +5,15 @@
 example:
 
 ```python
-from oxhttp.oxhttp import HttpServer, get
+from oxhttp import HttpServer, get, Router
+
+router = Router()
+
+router.route(get("/", lambda: "Welcome to OxHTTP!"))
+router.route(get("/hello/<name>", lambda name: ({"message": f"Hello, {name}!"}, 200)))
 
 app = HttpServer(("127.0.0.1", 5555))
-
-app.route(get("/", lambda: "Welcome to OxHTTP!"))
-app.route(get("/hello/<name>", lambda name: ({"message": f"Hello, {name}!"}, 200)))
+app.attach(router)
 
 if __name__ == "__main__":
     app.run()
