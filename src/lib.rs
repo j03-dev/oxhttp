@@ -1,6 +1,8 @@
 mod routing;
+mod status;
 
 use routing::{delete, get, patch, post, put, Router};
+use status::StatusCode;
 
 use std::{
     fmt,
@@ -13,48 +15,8 @@ use pyo3::{
     types::{PyDict, PyTuple},
 };
 
-enum Status {
-    Ok,
-    Created,
-    NotFound,
-    InternalServerError,
-    Unknow,
-}
-
-impl Status {
-    fn new(code: u16) -> Self {
-        match code {
-            200 => Self::Ok,
-            201 => Self::Created,
-            404 => Self::NotFound,
-            500 => Self::InternalServerError,
-            _ => Self::Unknow,
-        }
-    }
-
-    fn code(&self) -> u16 {
-        match self {
-            Self::Ok => 200,
-            Self::Created => 201,
-            Self::NotFound => 404,
-            Self::InternalServerError => 500,
-            Self::Unknow => 0,
-        }
-    }
-
-    fn reason(&self) -> &str {
-        match self {
-            Self::Ok => "Ok",
-            Self::Created => "Created",
-            Self::NotFound => "Not Found",
-            Self::InternalServerError => "Internal Server Error",
-            Self::Unknow => "Unknow",
-        }
-    }
-}
-
 struct Response {
-    status: Status,
+    status: StatusCode,
     content_type: String,
     body: String,
 }
@@ -115,7 +77,7 @@ impl HttpServer {
             let path = parts[1].to_string();
 
             let mut response = Response {
-                status: Status::NotFound,
+                status: StatusCode(404),
                 content_type: "text/plain".to_string(),
                 body: "NotFound".to_string(),
             };
@@ -135,7 +97,7 @@ impl HttpServer {
                             Ok(resp) => response = resp,
                             Err(e) => {
                                 response = Response {
-                                    status: Status::InternalServerError,
+                                    status: StatusCode(500),
                                     content_type: "text/plain".to_string(),
                                     body: e.to_string(),
                                 }
@@ -183,7 +145,7 @@ impl HttpServer {
         };
 
         Ok(Response {
-            status: Status::new(status),
+            status: StatusCode(status),
             content_type: content_type.to_string(),
             body: body_str,
         })
