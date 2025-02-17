@@ -2,7 +2,7 @@ mod routing;
 mod status;
 
 use routing::{delete, get, patch, post, put, Router};
-use status::StatusCode;
+use status::{IsHttpError, Status};
 
 use std::{
     fmt,
@@ -15,10 +15,35 @@ use pyo3::{
     types::{PyDict, PyTuple},
 };
 
+#[derive(Clone)]
+#[pyclass]
 struct Response {
-    status: StatusCode,
+    status: Status,
     content_type: String,
     body: String,
+}
+
+#[pymethods]
+impl Response {
+    #[new]
+    fn new(status: PyRef<'_, Status>, body: PyObject, py: Python<'_>) -> PyResult<Self> {
+        let (content_type, body_str) = if let Ok(dict) = body.downcast_bound::<PyDict>(py) {
+            let json_mod = PyModule::import(py, "json")?;
+            let json_str = json_mod
+                .call_method("dumps", (dict,), None)?
+                .extract::<String>()?;
+            ("application/json", json_str)
+        } else {
+            let repr = body.bind(py).repr()?.extract::<String>()?;
+            ("text/plain", repr)
+        };
+
+        Ok(Self {
+            status: status.clone(),
+            content_type: content_type.to_string(),
+            body: body_str.to_string(),
+        })
+    }
 }
 
 impl fmt::Display for Response {
@@ -52,9 +77,8 @@ impl HttpServer {
         })
     }
 
-    fn attach(&mut self, router: PyObject, py: Python<'_>) -> PyResult<()> {
-        self.routers.push(router.extract(py)?);
-        Ok(())
+    fn attach(&mut self, router: PyRef<'_, Router>) {
+        self.routers.push(router.clone());
     }
 
     fn run(&self, py: Python<'_>) -> PyResult<()> {
@@ -77,7 +101,7 @@ impl HttpServer {
             let path = parts[1].to_string();
 
             let mut response = Response {
-                status: StatusCode(404),
+                status: Status(404),
                 content_type: "text/plain".to_string(),
                 body: "NotFound".to_string(),
             };
@@ -99,7 +123,7 @@ impl HttpServer {
                                 Ok(resp) => response = resp,
                                 Err(e) => {
                                     response = Response {
-                                        status: StatusCode(500),
+                                        status: Status(500),
                                         content_type: "text/plain".to_string(),
                                         body: e.to_string(),
                                     }
@@ -127,36 +151,15 @@ impl HttpServer {
     ) -> PyResult<Response> {
         for middleware in &router.middlewares {
             let result = middleware.call(py, args, None)?;
-            let (body, status) = result.extract::<(PyObject, u16)>(py)?;
-            return self.create_response(py, (body, status));
+            let response = result.extract::<PyRef<'_, Response>>(py)?;
+            if response.status.code().is_http_error() {
+                return Ok(response.clone());
+            }
         }
 
         let result = handler.call(py, args, None)?;
-        let (body, status) = result.extract::<(PyObject, u16)>(py)?;
-        self.create_response(py, (body, status))
-    }
-
-    fn create_response(&self, py: Python<'_>, result: (PyObject, u16)) -> PyResult<Response> {
-        let (body, status) = result;
-
-        let (content_type, body_str) = if let Ok(s) = body.extract::<String>(py) {
-            ("text/plain", s)
-        } else if let Ok(dict) = body.downcast_bound::<PyDict>(py) {
-            let json_mod = PyModule::import(py, "json")?;
-            let json_str = json_mod
-                .call_method("dumps", (dict,), None)?
-                .extract::<String>()?;
-            ("application/json", json_str)
-        } else {
-            let repr = body.bind(py).repr()?.extract::<String>()?;
-            ("text/plain", repr)
-        };
-
-        Ok(Response {
-            status: StatusCode(status),
-            content_type: content_type.to_string(),
-            body: body_str,
-        })
+        let response = result.extract::<PyRef<'_, Response>>(py)?;
+        Ok(response.clone())
     }
 }
 
@@ -164,6 +167,8 @@ impl HttpServer {
 fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HttpServer>()?;
     m.add_class::<Router>()?;
+    m.add_class::<Status>()?;
+    m.add_class::<Response>()?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(post, m)?)?;
     m.add_function(wrap_pyfunction!(delete, m)?)?;

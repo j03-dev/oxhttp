@@ -1,12 +1,15 @@
-from oxhttp import HttpServer, Router, get
+from oxhttp import HttpServer, Router, get, Status, Response
 
-def user_info():
+
+def user_info() -> Response:
     """Fetch user information."""
-    return {"phone_number": 00000}, 200
+    return Response(Status.OK(), "Hello")
 
-def auth():
+
+def auth() -> Response:
     """Authentication middleware logic."""
-    return "Unauthorized", 401
+    return Response(Status.UNAUTHORIZED(), "UnAuthorized")
+
 
 # Secure router with authentication
 sec_router = Router()
@@ -15,7 +18,9 @@ sec_router.route(get("/me", user_info))
 
 # Public router
 pub_router = Router()
-pub_router.route(get("/hello/<name>", lambda name: (f"Hello {name}", 200)))
+pub_router.route(
+    get("/hello/<name>", lambda name: Response(Status.OK(), f"Hello {name}"))
+)
 
 # Create and configure the HTTP server
 server = HttpServer(("127.0.0.1", 5555))
