@@ -38,7 +38,7 @@ impl fmt::Display for Response {
 #[pyclass]
 struct HttpServer {
     addr: SocketAddr,
-    router: Router,
+    routers: Vec<Router>,
 }
 
 #[pymethods]
@@ -48,12 +48,12 @@ impl HttpServer {
         let (ip, port) = addr;
         Ok(Self {
             addr: SocketAddr::new(ip.parse().unwrap(), port),
-            router: Router::new(),
+            routers: Vec::new(),
         })
     }
 
-    fn attach(&mut self, router: PyRef<'_, Router>) -> PyResult<()> {
-        self.router.routes.extend(router.routes.clone());
+    fn attach(&mut self, router: PyObject, py: Python<'_>) -> PyResult<()> {
+        self.routers.push(router.extract(py)?);
         Ok(())
     }
 
@@ -82,28 +82,31 @@ impl HttpServer {
                 body: "NotFound".to_string(),
             };
 
-            for route in &self.router.routes {
-                if route.method == method {
-                    if let Some(params) = route.match_path(&path) {
-                        let params_tuple: Vec<&str> = route
-                            .param_names
-                            .iter()
-                            .filter_map(|name| params.get(name).map(|s| s.as_str()))
-                            .collect();
+            for router in &self.routers {
+                for route in &router.routes {
+                    if route.method == method {
+                        if let Some(params) = route.match_path(&path) {
+                            let params_tuple: Vec<&str> = route
+                                .param_names
+                                .iter()
+                                .filter_map(|name| params.get(name).map(|s| s.as_str()))
+                                .collect();
 
-                        let handler = &route.handler;
-                        let args = PyTuple::new(py, params_tuple)?;
-                        match self.process_response(py, handler, &args) {
-                            Ok(resp) => response = resp,
-                            Err(e) => {
-                                response = Response {
-                                    status: StatusCode(500),
-                                    content_type: "text/plain".to_string(),
-                                    body: e.to_string(),
+                            let handler = &route.handler;
+                            let args = PyTuple::new(py, params_tuple)?;
+
+                            match self.process_response(py, router, handler, &args) {
+                                Ok(resp) => response = resp,
+                                Err(e) => {
+                                    response = Response {
+                                        status: StatusCode(500),
+                                        content_type: "text/plain".to_string(),
+                                        body: e.to_string(),
+                                    }
                                 }
                             }
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -118,19 +121,24 @@ impl HttpServer {
     fn process_response(
         &self,
         py: Python<'_>,
+        router: &Router,
         handler: &Py<PyAny>,
         args: &Bound<'_, PyTuple>,
     ) -> PyResult<Response> {
+        for middleware in &router.middlewares {
+            let result = middleware.call(py, args, None)?;
+            let (body, status) = result.extract::<(PyObject, u16)>(py)?;
+            return self.create_response(py, (body, status));
+        }
+
         let result = handler.call(py, args, None)?;
+        let (body, status) = result.extract::<(PyObject, u16)>(py)?;
+        self.create_response(py, (body, status))
+    }
 
-        // Handle different response formats
-        let (body, status) = if let Ok((body, status)) = result.extract::<(PyObject, u16)>(py) {
-            (body, status)
-        } else {
-            (result.into_pyobject(py)?.into(), 200)
-        };
+    fn create_response(&self, py: Python<'_>, result: (PyObject, u16)) -> PyResult<Response> {
+        let (body, status) = result;
 
-        // Process body content
         let (content_type, body_str) = if let Ok(s) = body.extract::<String>(py) {
             ("text/plain", s)
         } else if let Ok(dict) = body.downcast_bound::<PyDict>(py) {

@@ -4,16 +4,27 @@ use regex::{Captures, Regex};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+type Middleware = Py<PyAny>;
+
+#[derive(Clone)]
 #[pyclass]
 pub struct Router {
     pub(crate) routes: Vec<Arc<Route>>,
+    pub(crate) middlewares: Vec<Arc<Middleware>>,
 }
 
 #[pymethods]
 impl Router {
     #[new]
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            middlewares: Vec::new(),
+        }
+    }
+
+    fn middleware(&mut self, middleware: Middleware) {
+        self.middlewares.push(Arc::new(middleware));
     }
 
     fn route(&mut self, route: PyRef<'_, Route>) -> PyResult<()> {
