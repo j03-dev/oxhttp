@@ -1,12 +1,76 @@
 use std::{
     collections::HashMap,
+    fmt,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
     sync::Arc,
 };
 
-use pyo3::{prelude::*, types::{PyDict, PyTuple}};
+use pyo3::{
+    prelude::*,
+    types::{PyDict, PyTuple},
+};
 use regex::{Captures, Regex};
+
+enum Status {
+    Ok,
+    Created,
+    NotFound,
+    InternalServerError,
+    Unknow,
+}
+
+impl Status {
+    fn new(code: u16) -> Self {
+        match code {
+            200 => Self::Ok,
+            201 => Self::Created,
+            404 => Self::NotFound,
+            500 => Self::InternalServerError,
+            _ => Self::Unknow,
+        }
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::Ok => 200,
+            Self::Created => 201,
+            Self::NotFound => 404,
+            Self::InternalServerError => 500,
+            Self::Unknow => 0,
+        }
+    }
+
+    fn reason(&self) -> &str {
+        match self {
+            Self::Ok => "Ok",
+            Self::Created => "Created",
+            Self::NotFound => "Not Found",
+            Self::InternalServerError => "Internal Server Error",
+            Self::Unknow => "Unknow",
+        }
+    }
+}
+
+struct Response {
+    status: Status,
+    content_type: String,
+    body: String,
+}
+
+impl fmt::Display for Response {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
+            self.status.code(),
+            self.status.reason(),
+            self.content_type,
+            self.body.len(),
+            self.body
+        )
+    }
+}
 
 #[pyclass]
 struct Route {
@@ -105,7 +169,12 @@ impl HttpServer {
             let method = parts[0].to_string();
             let path = parts[1].to_string();
 
-            let mut response = None;
+            let mut response = Response {
+                status: Status::NotFound,
+                content_type: "text/plain".to_string(),
+                body: "NotFound".to_string(),
+            };
+
             for route in &self.routes {
                 if route.method == method {
                     if let Some(params) = route.match_path(&path) {
@@ -118,30 +187,33 @@ impl HttpServer {
                         let handler = &route.handler;
                         let args = PyTuple::new(py, params_tuple)?;
                         match self.process_response(py, handler, &args) {
-                            Ok(resp) => response = Some(resp),
-                            Err(e) => response = Some(format!(
-                                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{}",
-                                e.to_string().len(),
-                                e.to_string()
-                            )),
+                            Ok(resp) => response = resp,
+                            Err(e) => {
+                                response = Response {
+                                    status: Status::InternalServerError,
+                                    content_type: "text/plain".to_string(),
+                                    body: e.to_string(),
+                                }
+                            }
                         }
                         break;
                     }
                 }
             }
 
-            let response = response.unwrap_or_else(||
-                "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found".to_string()
-            );
-
-            socket.write_all(response.as_bytes())?;
+            socket.write_all(response.to_string().as_bytes())?;
             socket.flush()?;
         }
     }
 }
 
 impl HttpServer {
-    fn process_response(&self, py: Python<'_>, handler: &Py<PyAny>, args: &Bound<'_, PyTuple>) -> PyResult<String> {
+    fn process_response(
+        &self,
+        py: Python<'_>,
+        handler: &Py<PyAny>,
+        args: &Bound<'_, PyTuple>,
+    ) -> PyResult<Response> {
         let result = handler.call(py, args, None)?;
 
         // Handle different response formats
@@ -156,21 +228,20 @@ impl HttpServer {
             ("text/plain", s)
         } else if let Ok(dict) = body.downcast_bound::<PyDict>(py) {
             let json_mod = PyModule::import(py, "json")?;
-            let json_str = json_mod.call_method("dumps", (dict,), None)?.extract::<String>()?;
+            let json_str = json_mod
+                .call_method("dumps", (dict,), None)?
+                .extract::<String>()?;
             ("application/json", json_str)
         } else {
             let repr = body.bind(py).repr()?.extract::<String>()?;
             ("text/plain", repr)
         };
 
-        Ok(format!(
-            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
-            status,
-            status_reason(status),
-            content_type,
-            body_str.len(),
-            body_str
-        ))
+        Ok(Response {
+            status: Status::new(status),
+            content_type: content_type.to_string(),
+            body: body_str,
+        })
     }
 }
 
@@ -184,14 +255,19 @@ fn post(path: String, handler: Py<PyAny>) -> Route {
     Route::new("POST".to_string(), path, handler)
 }
 
-fn status_reason(status: u16) -> &'static str {
-    match status {
-        200 => "OK",
-        201 => "Created",
-        404 => "Not Found",
-        500 => "Internal Server Error",
-        _ => "Unknown",
-    }
+#[pyfunction]
+fn delete(path: String, handler: Py<PyAny>) -> Route {
+    Route::new("DELETE".to_string(), path, handler)
+}
+
+#[pyfunction]
+fn patch(path: String, handler: Py<PyAny>) -> Route {
+    Route::new("PATCH".to_string(), path, handler)
+}
+
+#[pyfunction]
+fn put(path: String, handler: Py<PyAny>) -> Route {
+    Route::new("PUT".to_string(), path, handler)
 }
 
 #[pymodule]
@@ -199,5 +275,8 @@ fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HttpServer>()?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(post, m)?)?;
+    m.add_function(wrap_pyfunction!(delete, m)?)?;
+    m.add_function(wrap_pyfunction!(patch, m)?)?;
+    m.add_function(wrap_pyfunction!(put, m)?)?;
     Ok(())
 }
