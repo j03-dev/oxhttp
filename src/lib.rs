@@ -1,6 +1,6 @@
 mod routing;
 
-use routing::Router;
+use routing::{delete, get, patch, post, put, Router};
 
 use std::{
     fmt,
@@ -192,7 +192,12 @@ impl HttpServer {
 
 #[pymodule]
 fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    routing::routing(m)?;
     m.add_class::<HttpServer>()?;
+    m.add_class::<Router>()?;
+    m.add_function(wrap_pyfunction!(get, m)?)?;
+    m.add_function(wrap_pyfunction!(post, m)?)?;
+    m.add_function(wrap_pyfunction!(delete, m)?)?;
+    m.add_function(wrap_pyfunction!(patch, m)?)?;
+    m.add_function(wrap_pyfunction!(put, m)?)?;
     Ok(())
 }

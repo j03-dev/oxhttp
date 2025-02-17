@@ -79,39 +79,26 @@ impl Route {
 }
 
 #[pyfunction]
-fn get(path: String, handler: Py<PyAny>) -> Route {
+pub fn get(path: String, handler: Py<PyAny>) -> Route {
     Route::new("GET".to_string(), path, handler)
 }
 
 #[pyfunction]
-fn post(path: String, handler: Py<PyAny>) -> Route {
+pub fn post(path: String, handler: Py<PyAny>) -> Route {
     Route::new("POST".to_string(), path, handler)
 }
 
 #[pyfunction]
-fn delete(path: String, handler: Py<PyAny>) -> Route {
+pub fn delete(path: String, handler: Py<PyAny>) -> Route {
     Route::new("DELETE".to_string(), path, handler)
 }
 
 #[pyfunction]
-fn patch(path: String, handler: Py<PyAny>) -> Route {
+pub fn patch(path: String, handler: Py<PyAny>) -> Route {
     Route::new("PATCH".to_string(), path, handler)
 }
 
 #[pyfunction]
-fn put(path: String, handler: Py<PyAny>) -> Route {
+pub fn put(path: String, handler: Py<PyAny>) -> Route {
     Route::new("PUT".to_string(), path, handler)
-}
-
-pub fn routing(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
-    let routing_module = PyModule::new(parent_module.py(), "routing")?;
-
-    routing_module.add_class::<Router>()?;
-    routing_module.add_function(wrap_pyfunction!(get, &routing_module)?)?;
-    routing_module.add_function(wrap_pyfunction!(post, &routing_module)?)?;
-    routing_module.add_function(wrap_pyfunction!(delete, &routing_module)?)?;
-    routing_module.add_function(wrap_pyfunction!(patch, &routing_module)?)?;
-    routing_module.add_function(wrap_pyfunction!(put, &routing_module)?)?;
-
-    parent_module.add_submodule(&routing_module)
 }
