@@ -28,4 +28,4 @@ Todo:
 - [ ] use tokio::net::Listener
 - [x] middleware
 - [ ] app data
-- [ ] pass request in handler
+- [x] pass request in handler

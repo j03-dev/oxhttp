@@ -1,12 +1,14 @@
 use pyo3::prelude::*;
 
-pub trait IsHttpError {
-    fn is_http_error(&self) -> bool;
-}
+use crate::response::{IntoResponse, Response};
 
-impl IsHttpError for u16 {
-    fn is_http_error(&self) -> bool {
-        (400 <= *self && *self <= 499) || (500 <= *self && *self <= 599)
+impl IntoResponse for Status {
+    fn into_response(&self) -> Response {
+        Response {
+            status: self.clone(),
+            content_type: "text/plain".to_string(),
+            body: self.reason(),
+        }
     }
 }
 

@@ -1,64 +1,19 @@
+mod request;
+mod response;
 mod routing;
 mod status;
 
+use request::{Context, Request};
+use response::{IntoResponse, Response};
 use routing::{delete, get, patch, post, put, Router};
-use status::{IsHttpError, Status};
+use status::Status;
 
 use std::{
-    fmt,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
 };
 
-use pyo3::{
-    prelude::*,
-    types::{PyDict, PyTuple},
-};
-
-#[derive(Clone)]
-#[pyclass]
-struct Response {
-    status: Status,
-    content_type: String,
-    body: String,
-}
-
-#[pymethods]
-impl Response {
-    #[new]
-    fn new(status: PyRef<'_, Status>, body: PyObject, py: Python<'_>) -> PyResult<Self> {
-        let (content_type, body_str) = if let Ok(dict) = body.downcast_bound::<PyDict>(py) {
-            let json_mod = PyModule::import(py, "json")?;
-            let json_str = json_mod
-                .call_method("dumps", (dict,), None)?
-                .extract::<String>()?;
-            ("application/json", json_str)
-        } else {
-            let repr = body.bind(py).repr()?.extract::<String>()?;
-            ("text/plain", repr)
-        };
-
-        Ok(Self {
-            status: status.clone(),
-            content_type: content_type.to_string(),
-            body: body_str.to_string(),
-        })
-    }
-}
-
-impl fmt::Display for Response {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
-            self.status.code(),
-            self.status.reason(),
-            self.content_type,
-            self.body.len(),
-            self.body
-        )
-    }
-}
+use pyo3::{prelude::*, types::PyDict};
 
 #[pyclass]
 struct HttpServer {
@@ -89,9 +44,9 @@ impl HttpServer {
             let (mut socket, _) = listener.accept()?;
             let mut buffer = [0; 1024];
             let n = socket.read(&mut buffer)?;
-            let request = String::from_utf8_lossy(&buffer[..n]);
+            let request_str = String::from_utf8_lossy(&buffer[..n]);
 
-            let request_line = request.lines().next().unwrap_or("");
+            let request_line = request_str.lines().next().unwrap_or("");
             let parts: Vec<&str> = request_line.split_whitespace().collect();
             if parts.len() < 3 {
                 continue;
@@ -100,33 +55,41 @@ impl HttpServer {
             let method = parts[0].to_string();
             let path = parts[1].to_string();
 
-            let mut response = Response {
-                status: Status(404),
-                content_type: "text/plain".to_string(),
-                body: "NotFound".to_string(),
-            };
+            let mut headers = Vec::new();
+            let body = String::new();
+
+            for line in request_str.lines().skip(1) {
+                if line.is_empty() {
+                    break;
+                }
+                let header_parts: Vec<&str> = line.split(": ").collect();
+                if header_parts.len() == 2 {
+                    headers.push((header_parts[0].to_string(), header_parts[1].to_string()));
+                }
+            }
+
+            let request = Request::new(method.clone(), path.clone(), headers, body);
+            let context = Context::new(request);
+
+            let mut response = Status::NOT_FOUND().into_response();
 
             for router in &self.routers {
                 for route in &router.routes {
                     if route.method == method {
                         if let Some(params) = route.match_path(&path) {
-                            let params_tuple: Vec<&str> = route
-                                .param_names
-                                .iter()
-                                .filter_map(|name| params.get(name).map(|s| s.as_str()))
-                                .collect();
-
                             let handler = &route.handler;
-                            let args = PyTuple::new(py, params_tuple)?;
 
-                            match self.process_response(py, router, handler, &args) {
+                            let kwargs = PyDict::new(py);
+                            kwargs.set_item("context", context.clone())?;
+                            for (key, value) in params {
+                                kwargs.set_item(key, value)?;
+                            }
+                            match self.process_response(py, router, handler, &mut Some(&kwargs)) {
                                 Ok(resp) => response = resp,
                                 Err(e) => {
-                                    response = Response {
-                                        status: Status(500),
-                                        content_type: "text/plain".to_string(),
-                                        body: e.to_string(),
-                                    }
+                                    response = Status::INTERNAL_SERVER_ERROR()
+                                        .into_response()
+                                        .body(e.to_string())
                                 }
                             }
                             break;
@@ -147,17 +110,16 @@ impl HttpServer {
         py: Python<'_>,
         router: &Router,
         handler: &Py<PyAny>,
-        args: &Bound<'_, PyTuple>,
+        kwargs: &mut Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Response> {
         for middleware in &router.middlewares {
-            let result = middleware.call(py, args, None)?;
+            kwargs.unwrap().set_item("handler", handler)?;
+            let result = middleware.call(py, (), kwargs.clone())?;
             let response = result.extract::<PyRef<'_, Response>>(py)?;
-            if response.status.code().is_http_error() {
-                return Ok(response.clone());
-            }
+            return Ok(response.clone());
         }
 
-        let result = handler.call(py, args, None)?;
+        let result = handler.call(py, (), kwargs.clone())?;
         let response = result.extract::<PyRef<'_, Response>>(py)?;
         Ok(response.clone())
     }
@@ -169,6 +131,7 @@ fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Router>()?;
     m.add_class::<Status>()?;
     m.add_class::<Response>()?;
+    m.add_class::<Context>()?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(post, m)?)?;
     m.add_function(wrap_pyfunction!(delete, m)?)?;
