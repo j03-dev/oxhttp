@@ -3,12 +3,13 @@ mod response;
 mod routing;
 mod status;
 
-use request::{Context, Request};
+use request::Request;
 use response::{IntoResponse, Response};
 use routing::{delete, get, patch, post, put, Router};
 use status::Status;
 
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
 };
@@ -55,21 +56,24 @@ impl HttpServer {
             let method = parts[0].to_string();
             let path = parts[1].to_string();
 
-            let mut headers = Vec::new();
-            let body = String::new();
+            let mut headers = HashMap::new();
+            let mut body = String::new();
+            let mut is_body = false;
 
             for line in request_str.lines().skip(1) {
-                if line.is_empty() {
-                    break;
+                if is_body {
+                    body.push_str(line);
+                    body.push('\n');
+                } else if line.is_empty() {
+                    is_body = true;
                 }
                 let header_parts: Vec<&str> = line.split(": ").collect();
                 if header_parts.len() == 2 {
-                    headers.push((header_parts[0].to_string(), header_parts[1].to_string()));
+                    headers.insert(header_parts[0].to_string(), header_parts[1].to_string());
                 }
             }
 
             let request = Request::new(method.clone(), path.clone(), headers, body);
-            let context = Context::new(request);
 
             let mut response = Status::NOT_FOUND().into_response();
 
@@ -80,7 +84,7 @@ impl HttpServer {
                             let handler = &route.handler;
 
                             let kwargs = PyDict::new(py);
-                            kwargs.set_item("context", context.clone())?;
+                            kwargs.set_item("request", request.clone())?;
                             for (key, value) in params {
                                 kwargs.set_item(key, value)?;
                             }
@@ -113,7 +117,7 @@ impl HttpServer {
         kwargs: &mut Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Response> {
         for middleware in &router.middlewares {
-            kwargs.unwrap().set_item("handler", handler)?;
+            kwargs.unwrap().set_item("next", handler)?;
             let result = middleware.call(py, (), kwargs.clone())?;
             let response = result.extract::<PyRef<'_, Response>>(py)?;
             return Ok(response.clone());
@@ -131,7 +135,7 @@ fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Router>()?;
     m.add_class::<Status>()?;
     m.add_class::<Response>()?;
-    m.add_class::<Context>()?;
+    m.add_class::<Request>()?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(post, m)?)?;
     m.add_function(wrap_pyfunction!(delete, m)?)?;

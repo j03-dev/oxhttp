@@ -1,20 +1,25 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 
 #[derive(Clone)]
 #[pyclass]
 pub struct Request {
     pub method: String,
     pub url: String,
-    pub headers: Vec<(String, String)>,
+    pub headers: HashMap<String, String>,
     pub body: String,
 }
 
 #[pymethods]
 impl Request {
     #[new]
-    pub fn new(method: String, url: String, headers: Vec<(String, String)>, body: String) -> Self {
+    pub fn new(
+        method: String,
+        url: String,
+        headers: HashMap<String, String>,
+        body: String,
+    ) -> Self {
         Self {
             method,
             url,
@@ -22,30 +27,15 @@ impl Request {
             body,
         }
     }
-}
 
-#[derive(Clone)]
-#[pyclass]
-pub struct Context {
-    pub request: Request,
-    pub variables: HashMap<String, Arc<PyObject>>,
-}
-
-#[pymethods]
-impl Context {
-    #[new]
-    pub fn new(request: Request) -> Self {
-        Self {
-            request,
-            variables: HashMap::new(),
-        }
+    pub fn headers(&self) -> HashMap<String, String> {
+        self.headers.clone()
     }
 
-    fn set_variable(&mut self, key: String, value: PyObject) {
-        self.variables.insert(key, Arc::new(value));
-    }
-
-    fn get_variable(&self, key: &str, py: Python<'_>) -> Py<PyAny> {
-        self.variables.get(key).unwrap().clone_ref(py).into_any()
+    pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let json_mod = PyModule::import(py, "json")?;
+        json_mod
+            .call_method("loads", (self.body.clone(),), None)?
+            .extract()
     }
 }

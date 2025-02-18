@@ -1,26 +1,67 @@
-from oxhttp import HttpServer, Router, get, Status, Response, Context
+from jwt import decode, encode, ExpiredSignatureError, InvalidTokenError
+from oxhttp import HttpServer, Router, get, post, Status, Response, Request
 from typing import Callable
 
-
-def user_info(context: Context, id) -> Response:
-    user = context.get_variable("user")
-    return Response(Status.OK(), f"Hello, {user}! id {id}")
+SECRET = "8b78e057cf6bc3e646097e5c0277f5ccaa2d8ac3b6d4a4d8c73c7f6af02f0ccd"
 
 
-def auth(context: Context, handler: Callable, **kwargs) -> Response:
-    context.set_variable("user", "Authenticated User")
-    return handler(context, **kwargs)
+def create_jwt(user_id: int) -> str:
+    payload = {
+        "user_id": user_id,
+    }
+    return encode(payload, SECRET, algorithm="HS256")
+
+
+def decode_jwt(token: str):
+    try:
+        return decode(token, SECRET, algorithms=["HS256"])
+    except ExpiredSignatureError:
+        return None
+    except InvalidTokenError:
+        return None
+
+
+def login(request: Request) -> Response:
+    body = request.json()
+    username = body.get("username")
+    password = body.get("password")
+
+    if username == "admin" and password == "password":  # Exemple simplifié
+        token = create_jwt(user_id=1)
+        return Response(Status.OK(), {"token": token})
+    return Response(Status.UNAUTHORIZED(), "Invalid credentials")
+
+
+def user_info(request: Request, user_id) -> Response:
+    return Response(Status.OK(), {"user_id": user_id})
+
+
+def jwt_middleware(request: Request, next: Callable, **kwargs) -> Response:
+    headers = request.headers()
+    token = headers.get("Authorization", "").replace("Bearer ", "")
+
+    if token:
+        payload = decode_jwt(token)
+        if payload:
+            kwargs["user_id"] = payload["user_id"]
+            return next(request, **kwargs)
+
+    return Response(Status.UNAUTHORIZED(), "Unauthorized")
 
 
 sec_router = Router()
-sec_router.middleware(auth)
-sec_router.route(get("/me/<id>", user_info))
+sec_router.middleware(jwt_middleware)
+sec_router.route(get("/me", user_info))
 
 pub_router = Router()
+pub_router.route(post("/login", login))
 pub_router.route(
     get(
         "/hello/<name>",
-        lambda context, name: Response(Status.OK(), f"Hello {name}"),
+        lambda request, name: Response(
+            Status.OK(),
+            f"Hello {name}",
+        ),
     )
 )
 
