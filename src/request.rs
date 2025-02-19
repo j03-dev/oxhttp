@@ -33,9 +33,20 @@ impl Request {
     }
 
     pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let json_mod = PyModule::import(py, "json")?;
-        json_mod
-            .call_method("loads", (self.body.clone(),), None)?
+        let json = PyModule::import(py, "json")?;
+        json.call_method("loads", (self.body.clone(),), None)?
             .extract()
+    }
+
+    pub fn url(&self) -> String {
+        self.url.clone()
+    }
+
+    pub fn method(&self) -> String {
+        self.method.clone()
+    }
+
+    pub fn query(&self) -> PyResult<Py<PyDict>> {
+        todo!()
     }
 }

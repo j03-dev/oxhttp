@@ -6,9 +6,7 @@ SECRET = "8b78e057cf6bc3e646097e5c0277f5ccaa2d8ac3b6d4a4d8c73c7f6af02f0ccd"
 
 
 def create_jwt(user_id: int) -> str:
-    payload = {
-        "user_id": user_id,
-    }
+    payload = {"user_id": user_id}
     return encode(payload, SECRET, algorithm="HS256")
 
 
@@ -21,18 +19,14 @@ def decode_jwt(token: str):
         return None
 
 
-def login(request: Request) -> Response:
-    body = request.json()
-    username = body.get("username")
-    password = body.get("password")
-
-    if username == "admin" and password == "password":  # Exemple simplifié
+def login(cred: dict):
+    if cred.get("username") == "admin" and cred.get("password") == "password":
         token = create_jwt(user_id=1)
         return Response(Status.OK(), {"token": token})
-    return Response(Status.UNAUTHORIZED(), "Invalid credentials")
+    return Status.UNAUTHORIZED()
 
 
-def user_info(request: Request, user_id) -> Response:
+def user_info(user_id) -> Response:
     return Response(Status.OK(), {"user_id": user_id})
 
 
@@ -44,9 +38,13 @@ def jwt_middleware(request: Request, next: Callable, **kwargs) -> Response:
         payload = decode_jwt(token)
         if payload:
             kwargs["user_id"] = payload["user_id"]
-            return next(request, **kwargs)
+            return next(**kwargs)
 
     return Response(Status.UNAUTHORIZED(), "Unauthorized")
+
+
+def hello_world(name: str) -> Response:
+    return Response(Status.OK(), f"Hello {name}")
 
 
 sec_router = Router()
@@ -55,15 +53,7 @@ sec_router.route(get("/me", user_info))
 
 pub_router = Router()
 pub_router.route(post("/login", login))
-pub_router.route(
-    get(
-        "/hello/<name>",
-        lambda request, name: Response(
-            Status.OK(),
-            f"Hello {name}",
-        ),
-    )
-)
+pub_router.route(get("/hello/<name>", hello_world))
 
 server = HttpServer(("127.0.0.1", 5555))
 server.attach(sec_router)

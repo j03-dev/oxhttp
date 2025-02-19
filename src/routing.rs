@@ -89,27 +89,16 @@ impl Route {
     }
 }
 
-#[pyfunction]
-pub fn get(path: String, handler: Py<PyAny>) -> Route {
-    Route::new("GET".to_string(), path, handler)
+macro_rules! method {
+    ($($func:ident),+) => {
+        $(
+            #[pyfunction]
+            pub fn $func(path: String, handler: Py<PyAny>) -> Route {
+                let method_name = stringify!($func).to_uppercase();
+                Route::new(method_name, path, handler)
+            }
+        )+
+    };
 }
 
-#[pyfunction]
-pub fn post(path: String, handler: Py<PyAny>) -> Route {
-    Route::new("POST".to_string(), path, handler)
-}
-
-#[pyfunction]
-pub fn delete(path: String, handler: Py<PyAny>) -> Route {
-    Route::new("DELETE".to_string(), path, handler)
-}
-
-#[pyfunction]
-pub fn patch(path: String, handler: Py<PyAny>) -> Route {
-    Route::new("PATCH".to_string(), path, handler)
-}
-
-#[pyfunction]
-pub fn put(path: String, handler: Py<PyAny>) -> Route {
-    Route::new("PUT".to_string(), path, handler)
-}
+method!(get, post, delete, patch, put);

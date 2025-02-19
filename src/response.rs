@@ -8,6 +8,56 @@ pub trait IntoResponse {
     fn into_response(&self) -> Response;
 }
 
+impl IntoResponse for String {
+    fn into_response(&self) -> Response {
+        Response {
+            status: Status::OK(),
+            content_type: "text/plain".to_string(),
+            body: self.clone(),
+        }
+    }
+}
+
+impl IntoResponse for (String, u16) {
+    fn into_response(&self) -> Response {
+        Response {
+            status: Status(self.1),
+            content_type: "text/plain".to_string(),
+            body: self.0.clone(),
+        }
+    }
+}
+
+impl IntoResponse for (Py<PyDict>, u16) {
+    fn into_response(&self) -> Response {
+        Response {
+            status: Status(self.1),
+            content_type: "json/application".to_string(),
+            body: self.0.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for (String, Status) {
+    fn into_response(&self) -> Response {
+        Response {
+            status: self.1.clone(),
+            content_type: "text/plain".to_string(),
+            body: self.0.clone(),
+        }
+    }
+}
+
+impl IntoResponse for (Py<PyDict>, Status) {
+    fn into_response(&self) -> Response {
+        Response {
+            status: self.1.clone(),
+            content_type: "json/application".to_string(),
+            body: self.0.to_string(),
+        }
+    }
+}
+
 #[derive(Clone)]
 #[pyclass]
 pub(crate) struct Response {
@@ -39,6 +89,12 @@ impl Response {
     }
 }
 
+impl IntoResponse for Response {
+    fn into_response(&self) -> Response {
+        self.clone()
+    }
+}
+
 impl Response {
     pub(crate) fn body(mut self, body: String) -> Self {
         self.body = body;
@@ -58,4 +114,39 @@ impl fmt::Display for Response {
             self.body
         )
     }
+}
+
+#[macro_export]
+macro_rules! to_response {
+    ($rslt:expr, $py:expr) => {{
+        if let Ok(response) = $rslt.extract::<PyRef<'_, Response>>($py) {
+            return Ok(response.clone());
+        }
+
+        if let Ok(status) = $rslt.extract::<PyRef<'_, Status>>($py) {
+            return Ok(status.into_response());
+        }
+
+        if let Ok((body, status_code)) = $rslt.extract::<(String, u16)>($py) {
+            return Ok((body, status_code).into_response());
+        }
+
+        if let Ok((body, status_code)) = $rslt.extract::<(Py<PyDict>, u16)>($py) {
+            return Ok((body, status_code).into_response());
+        }
+
+        if let Ok((body, status_code)) = $rslt.extract::<(String, Status)>($py) {
+            return Ok((body, status_code).into_response());
+        }
+
+        if let Ok((body, status_code)) = $rslt.extract::<(Py<PyDict>, Status)>($py) {
+            return Ok((body, status_code).into_response());
+        }
+
+        if let Ok(body) = $rslt.extract::<String>($py) {
+            return Ok(body.into_response());
+        }
+
+        return Ok(Status::INTERNAL_SERVER_ERROR().into_response());
+    }};
 }

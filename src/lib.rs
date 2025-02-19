@@ -28,7 +28,7 @@ impl HttpServer {
     fn new(addr: (String, u16)) -> PyResult<Self> {
         let (ip, port) = addr;
         Ok(Self {
-            addr: SocketAddr::new(ip.parse().unwrap(), port),
+            addr: SocketAddr::new(ip.parse()?, port),
             routers: Vec::new(),
         })
     }
@@ -81,14 +81,14 @@ impl HttpServer {
                 for route in &router.routes {
                     if route.method == method {
                         if let Some(params) = route.match_path(&path) {
-                            let handler = &route.handler;
-
-                            let kwargs = PyDict::new(py);
-                            kwargs.set_item("request", request.clone())?;
-                            for (key, value) in params {
-                                kwargs.set_item(key, value)?;
-                            }
-                            match self.process_response(py, router, handler, &mut Some(&kwargs)) {
+                            let handler = route.handler.clone_ref(py);
+                            match self.process_response(
+                                py,
+                                router,
+                                handler,
+                                request.clone(),
+                                params,
+                            ) {
                                 Ok(resp) => response = resp,
                                 Err(e) => {
                                     response = Status::INTERNAL_SERVER_ERROR()
@@ -113,19 +113,49 @@ impl HttpServer {
         &self,
         py: Python<'_>,
         router: &Router,
-        handler: &Py<PyAny>,
-        kwargs: &mut Option<&Bound<'_, PyDict>>,
+        handler: Py<PyAny>,
+        request: Request,
+        params: HashMap<String, String>,
     ) -> PyResult<Response> {
-        for middleware in &router.middlewares {
-            kwargs.unwrap().set_item("next", handler)?;
-            let result = middleware.call(py, (), kwargs.clone())?;
-            let response = result.extract::<PyRef<'_, Response>>(py)?;
-            return Ok(response.clone());
+        let kwargs = PyDict::new(py);
+
+        kwargs.set_item("request", request.clone())?;
+        kwargs.set_item("next", handler.clone_ref(py))?;
+
+        for (key, value) in &params {
+            kwargs.set_item(key, value)?;
         }
 
-        let result = handler.call(py, (), kwargs.clone())?;
-        let response = result.extract::<PyRef<'_, Response>>(py)?;
-        Ok(response.clone())
+        let inspect = PyModule::import(py, "inspect")?;
+        let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
+        let parameters = sig.getattr("parameters")?;
+        let values = parameters.call_method("values", (), None)?;
+
+        let mut iter = values.try_iter()?;
+        let mut body_param_name = None;
+
+        while let Some(param) = iter.next() {
+            let key: String = param?.into_pyobject(py)?.getattr("name")?.extract()?;
+            if !params.contains_key(&key) {
+                body_param_name = Some(key);
+                break;
+            }
+        }
+
+        if let (Some(body_name), Ok(body)) = (body_param_name, request.json(py)) {
+            kwargs.set_item(body_name.clone(), body.clone_ref(py))?;
+        }
+
+        for middleware in &router.middlewares {
+            let result = middleware.call(py, (), Some(&kwargs))?;
+            to_response!(result, py);
+        }
+
+        kwargs.del_item("request")?;
+        kwargs.del_item("next")?;
+
+        let result = handler.call(py, (), Some(&kwargs))?;
+        to_response!(result, py);
     }
 }
 
