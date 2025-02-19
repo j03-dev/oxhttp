@@ -5,13 +5,14 @@ mod status;
 
 use request::Request;
 use response::{IntoResponse, Response};
-use routing::{delete, get, patch, post, put, Router};
+use routing::{delete, get, patch, post, put, Route, Router};
 use status::Status;
 
 use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
+    sync::Arc,
 };
 
 use pyo3::{prelude::*, types::PyDict};
@@ -81,14 +82,8 @@ impl HttpServer {
                 for route in &router.routes {
                     if route.method == method {
                         if let Some(params) = route.match_path(&path) {
-                            let handler = route.handler.clone_ref(py);
-                            match self.process_response(
-                                py,
-                                router,
-                                handler,
-                                request.clone(),
-                                params,
-                            ) {
+                            match self.process_response(py, router, route, request.clone(), params)
+                            {
                                 Ok(resp) => response = resp,
                                 Err(e) => {
                                     response = Status::INTERNAL_SERVER_ERROR()
@@ -113,29 +108,22 @@ impl HttpServer {
         &self,
         py: Python<'_>,
         router: &Router,
-        handler: Py<PyAny>,
+        route: &Arc<Route>,
         request: Request,
         params: HashMap<String, String>,
     ) -> PyResult<Response> {
         let kwargs = PyDict::new(py);
 
         kwargs.set_item("request", request.clone())?;
-        kwargs.set_item("next", handler.clone_ref(py))?;
+        kwargs.set_item("next", route.handler.clone_ref(py))?;
 
         for (key, value) in &params {
             kwargs.set_item(key, value)?;
         }
 
-        let inspect = PyModule::import(py, "inspect")?;
-        let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
-        let parameters = sig.getattr("parameters")?;
-        let values = parameters.call_method("values", (), None)?;
-
-        let mut iter = values.try_iter()?;
         let mut body_param_name = None;
 
-        while let Some(param) = iter.next() {
-            let key: String = param?.into_pyobject(py)?.getattr("name")?.extract()?;
+        for key in route.args.clone() {
             if !params.contains_key(&key) {
                 body_param_name = Some(key);
                 break;
@@ -154,7 +142,7 @@ impl HttpServer {
         kwargs.del_item("request")?;
         kwargs.del_item("next")?;
 
-        let result = handler.call(py, (), Some(&kwargs))?;
+        let result = route.handler.call(py, (), Some(&kwargs))?;
         to_response!(result, py);
     }
 }

@@ -28,34 +28,49 @@ impl Router {
     }
 
     fn route(&mut self, route: PyRef<'_, Route>) -> PyResult<()> {
-        self.routes.push(Arc::new(Route::new(
-            route.method.clone(),
-            route.path_pattern.clone(),
-            route.handler.clone_ref(route.py()),
-        )));
+        self.routes.push(Arc::new(route.clone()));
         Ok(())
     }
 }
 
+#[derive(Clone)]
 #[pyclass]
 pub(crate) struct Route {
     pub(crate) method: String,
-    pub(crate) path_pattern: String,
     pub(crate) regex: Regex,
     pub(crate) param_names: Vec<String>,
-    pub(crate) handler: Py<PyAny>,
+    pub(crate) handler: Arc<Py<PyAny>>,
+    pub(crate) args: Vec<String>,
 }
 
 impl Route {
-    pub(crate) fn new(method: String, path_pattern: String, handler: Py<PyAny>) -> Self {
+    pub(crate) fn new(
+        method: String,
+        path_pattern: String,
+        handler: Py<PyAny>,
+        py: Python<'_>,
+    ) -> PyResult<Self> {
         let (regex, param_names) = Self::compile_route_pattern(&path_pattern);
-        Self {
+
+        let inspect = PyModule::import(py, "inspect")?;
+        let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
+        let parameters = sig.getattr("parameters")?;
+        let values = parameters.call_method("values", (), None)?.try_iter()?;
+
+        let mut args = Vec::new();
+
+        for param in values {
+            let key: String = param?.into_pyobject(py)?.getattr("name")?.extract()?;
+            args.push(key);
+        }
+
+        Ok(Self {
             method,
-            path_pattern,
             regex,
             param_names,
-            handler,
-        }
+            handler: Arc::new(handler),
+            args,
+        })
     }
 
     fn compile_route_pattern(pattern: &str) -> (Regex, Vec<String>) {
@@ -93,9 +108,9 @@ macro_rules! method {
     ($($func:ident),+) => {
         $(
             #[pyfunction]
-            pub fn $func(path: String, handler: Py<PyAny>) -> Route {
+            pub fn $func(path: String, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Route> {
                 let method_name = stringify!($func).to_uppercase();
-                Route::new(method_name, path, handler)
+                Route::new(method_name, path, handler, py)
             }
         )+
     };
