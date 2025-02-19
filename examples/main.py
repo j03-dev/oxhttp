@@ -22,15 +22,15 @@ def decode_jwt(token: str):
 def login(cred: dict):
     if cred.get("username") == "admin" and cred.get("password") == "password":
         token = create_jwt(user_id=1)
-        return Response(Status.OK(), {"token": token})
+        return {"token": token}
     return Status.UNAUTHORIZED()
 
 
 def user_info(user_id) -> Response:
-    return Response(Status.OK(), {"user_id": user_id})
+    return {"user_id": user_id}
 
 
-def jwt_middleware(request: Request, next: Callable, **kwargs) -> Response:
+def jwt_middleware(request: Request, next: Callable, **kwargs):
     headers = request.headers()
     token = headers.get("Authorization", "").replace("Bearer ", "")
 
@@ -40,11 +40,7 @@ def jwt_middleware(request: Request, next: Callable, **kwargs) -> Response:
             kwargs["user_id"] = payload["user_id"]
             return next(**kwargs)
 
-    return Response(Status.UNAUTHORIZED(), "Unauthorized")
-
-
-def hello_world(name: str) -> Response:
-    return Response(Status.OK(), f"Hello {name}")
+    return Status.UNAUTHORIZED()
 
 
 sec_router = Router()
@@ -53,7 +49,7 @@ sec_router.route(get("/me", user_info))
 
 pub_router = Router()
 pub_router.route(post("/login", login))
-pub_router.route(get("/hello/<name>", hello_world))
+pub_router.route(get("/hello/<name>", lambda name: f"Hello {name}"))
 
 server = HttpServer(("127.0.0.1", 5555))
 server.attach(sec_router)

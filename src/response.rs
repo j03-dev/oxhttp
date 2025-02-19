@@ -4,60 +4,6 @@ use crate::status::Status;
 
 use std::fmt;
 
-pub trait IntoResponse {
-    fn into_response(&self) -> Response;
-}
-
-impl IntoResponse for String {
-    fn into_response(&self) -> Response {
-        Response {
-            status: Status::OK(),
-            content_type: "text/plain".to_string(),
-            body: self.clone(),
-        }
-    }
-}
-
-impl IntoResponse for (String, u16) {
-    fn into_response(&self) -> Response {
-        Response {
-            status: Status(self.1),
-            content_type: "text/plain".to_string(),
-            body: self.0.clone(),
-        }
-    }
-}
-
-impl IntoResponse for (Py<PyDict>, u16) {
-    fn into_response(&self) -> Response {
-        Response {
-            status: Status(self.1),
-            content_type: "json/application".to_string(),
-            body: self.0.to_string(),
-        }
-    }
-}
-
-impl IntoResponse for (String, Status) {
-    fn into_response(&self) -> Response {
-        Response {
-            status: self.1.clone(),
-            content_type: "text/plain".to_string(),
-            body: self.0.clone(),
-        }
-    }
-}
-
-impl IntoResponse for (Py<PyDict>, Status) {
-    fn into_response(&self) -> Response {
-        Response {
-            status: self.1.clone(),
-            content_type: "json/application".to_string(),
-            body: self.0.to_string(),
-        }
-    }
-}
-
 #[derive(Clone)]
 #[pyclass]
 pub(crate) struct Response {
@@ -86,12 +32,6 @@ impl Response {
             content_type: content_type.to_string(),
             body: body_str.to_string(),
         })
-    }
-}
-
-impl IntoResponse for Response {
-    fn into_response(&self) -> Response {
-        self.clone()
     }
 }
 
@@ -143,10 +83,18 @@ macro_rules! to_response {
             return Ok((body, status_code).into_response());
         }
 
+        if let Ok(body) = $rslt.extract::<Py<PyDict>>($py) {
+            return Ok(body.into_response());
+        }
+
         if let Ok(body) = $rslt.extract::<String>($py) {
             return Ok(body.into_response());
         }
 
-        return Ok(Status::INTERNAL_SERVER_ERROR().into_response());
+        return Ok(Response {
+            status: Status(500),
+            content_type: "text/plain".to_string(),
+            body: "failed to convert this type to response".to_string(),
+        });
     }};
 }

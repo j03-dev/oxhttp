@@ -1,10 +1,12 @@
+mod into_response;
 mod request;
 mod response;
 mod routing;
 mod status;
 
+use into_response::IntoResponse;
 use request::Request;
-use response::{IntoResponse, Response};
+use response::Response;
 use routing::{delete, get, patch, post, put, Route, Router};
 use status::Status;
 

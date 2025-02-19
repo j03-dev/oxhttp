@@ -1,16 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::response::{IntoResponse, Response};
-
-impl IntoResponse for Status {
-    fn into_response(&self) -> Response {
-        Response {
-            status: self.clone(),
-            content_type: "text/plain".to_string(),
-            body: self.reason(),
-        }
-    }
-}
+use crate::{into_response::IntoResponse, response::Response};
 
 #[derive(Clone)]
 #[pyclass]
@@ -40,6 +30,16 @@ macro_rules! status_codes {
             pub fn code(&self) -> u16 {
                 self.0
             }
+        }
+    }
+}
+
+impl IntoResponse for Status {
+    fn into_response(&self) -> Response {
+        Response {
+            status: self.clone(),
+            content_type: "text/plain".to_string(),
+            body: self.reason(),
         }
     }
 }
