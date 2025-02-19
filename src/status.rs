@@ -39,7 +39,7 @@ impl IntoResponse for Status {
         Response {
             status: self.clone(),
             content_type: "text/plain".to_string(),
-            body: self.reason(),
+            body: String::new(),
         }
     }
 }
