@@ -29,3 +29,5 @@ Todo:
 - [x] middleware
 - [x] app data
 - [x] pass request in handler
+- [ ] serve static file
+- [ ] templating
