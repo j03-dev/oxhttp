@@ -23,6 +23,7 @@ use pyo3::{prelude::*, types::PyDict};
 struct HttpServer {
     addr: SocketAddr,
     routers: Vec<Router>,
+    app_data: Option<Py<PyAny>>,
 }
 
 #[pymethods]
@@ -33,7 +34,12 @@ impl HttpServer {
         Ok(Self {
             addr: SocketAddr::new(ip.parse()?, port),
             routers: Vec::new(),
+            app_data: None,
         })
+    }
+
+    fn app_data(&mut self, app_data: Py<PyAny>) {
+        self.app_data = Some(app_data)
     }
 
     fn attach(&mut self, router: PyRef<'_, Router>) {
@@ -119,6 +125,10 @@ impl HttpServer {
         kwargs.set_item("request", request.clone())?;
         kwargs.set_item("next", route.handler.clone_ref(py))?;
 
+        if self.app_data.is_some() && route.args.contains(&"app_data".to_string()) {
+            kwargs.set_item("app_data", self.app_data.as_ref().unwrap().clone_ref(py))?;
+        }
+
         for (key, value) in &params {
             kwargs.set_item(key, value)?;
         }
@@ -126,7 +136,7 @@ impl HttpServer {
         let mut body_param_name = None;
 
         for key in route.args.clone() {
-            if !params.contains_key(&key) {
+            if key != "app_data" && !params.contains_key(&key) {
                 body_param_name = Some(key);
                 break;
             }

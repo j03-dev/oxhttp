@@ -1,3 +1,5 @@
+import sqlite3
+
 from jwt import decode, encode, ExpiredSignatureError, InvalidTokenError
 from oxhttp import HttpServer, Router, get, post, Status, Response, Request
 from typing import Callable
@@ -49,7 +51,13 @@ pub_router = Router()
 pub_router.route(post("/login", login))
 pub_router.route(get("/hello/<name>", lambda name: f"Hello {name}"))
 
+
+class AppData:
+    conn = sqlite3.connect("database.db")
+
+
 server = HttpServer(("127.0.0.1", 5555))
+server.app_data(AppData)
 server.attach(sec_router)
 server.attach(pub_router)
 

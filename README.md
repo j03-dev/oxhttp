@@ -27,5 +27,5 @@ Todo:
 - [x] Routing
 - [ ] use tokio::net::Listener
 - [x] middleware
-- [ ] app data
+- [x] app data
 - [x] pass request in handler
