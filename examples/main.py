@@ -23,11 +23,11 @@ def login(cred: dict):
     if cred.get("username") == "admin" and cred.get("password") == "password":
         token = create_jwt(user_id=1)
         return {"token": token}
-    return Status.UNAUTHORIZED()
+    Status.UNAUTHORIZED()
 
 
 def user_info(user_id) -> Response:
-    return {"user_id": user_id}
+    return Response(Status.OK(), {"user_id": user_id})
 
 
 def jwt_middleware(request: Request, next: Callable, **kwargs):
@@ -35,11 +35,9 @@ def jwt_middleware(request: Request, next: Callable, **kwargs):
     token = headers.get("Authorization", "").replace("Bearer ", "")
 
     if token:
-        payload = decode_jwt(token)
-        if payload:
+        if payload := decode_jwt(token):
             kwargs["user_id"] = payload["user_id"]
             return next(**kwargs)
-
     return Status.UNAUTHORIZED()
 
 

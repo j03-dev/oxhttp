@@ -1,6 +1,6 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::PyDict, IntoPyObjectExt};
 
-use crate::status::Status;
+use crate::{into_response::IntoResponse, status::Status, to_response};
 
 use std::fmt;
 
@@ -15,23 +15,26 @@ pub(crate) struct Response {
 #[pymethods]
 impl Response {
     #[new]
-    pub(crate) fn new(status: PyRef<'_, Status>, body: PyObject, py: Python<'_>) -> PyResult<Self> {
-        let (content_type, body_str) = if let Ok(dict) = body.downcast_bound::<PyDict>(py) {
-            let json_mod = PyModule::import(py, "json")?;
-            let json_str = json_mod
-                .call_method("dumps", (dict,), None)?
-                .extract::<String>()?;
-            ("application/json", json_str)
-        } else {
-            let repr = body.bind(py).repr()?.extract::<String>()?;
-            ("text/plain", repr)
-        };
-
-        Ok(Self {
+    #[pyo3(signature=(status, body, content_type="json/application".to_string()))]
+    pub(crate) fn new(
+        status: PyRef<'_, Status>,
+        body: PyObject,
+        content_type: String,
+        py: Python<'_>,
+    ) -> PyResult<Self> {
+        let rslt = Self {
             status: status.clone(),
-            content_type: content_type.to_string(),
-            body: body_str.to_string(),
-        })
+            content_type,
+            body: body.to_string(),
+        }
+        .into_py_any(py)?;
+        to_response!(rslt, py);
+    }
+}
+
+impl IntoResponse for Response {
+    fn into_response(&self) -> Response {
+        self.clone()
     }
 }
 
