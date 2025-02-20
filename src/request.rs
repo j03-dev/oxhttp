@@ -46,7 +46,26 @@ impl Request {
         self.method.clone()
     }
 
-    pub fn query(&self) -> PyResult<Py<PyDict>> {
-        todo!()
+    pub fn query(&self) -> PyResult<Option<HashMap<String, String>>> {
+        let query_string = self.url.split('?').nth(1);
+        if let Some(query) = query_string {
+            let query_params = Self::parse_query_string(query.to_string());
+            return Ok(Some(query_params));
+        }
+        Ok(None)
+    }
+}
+
+impl Request {
+    fn parse_query_string(query_string: String) -> HashMap<String, String> {
+        query_string
+            .split('&')
+            .filter_map(|pair| {
+                let mut parts = pair.split('=');
+                let key = parts.next()?.to_string();
+                let value = parts.next().map_or("".to_string(), |v| v.to_string());
+                Some((key, value))
+            })
+            .collect()
     }
 }

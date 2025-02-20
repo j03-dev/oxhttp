@@ -35,16 +35,16 @@ impl Router {
 
 #[derive(Clone)]
 #[pyclass]
-pub(crate) struct Route {
-    pub(crate) method: String,
-    pub(crate) regex: Regex,
-    pub(crate) param_names: Vec<String>,
-    pub(crate) handler: Arc<Py<PyAny>>,
-    pub(crate) args: Vec<String>,
+pub struct Route {
+    pub method: String,
+    pub regex: Regex,
+    pub param_names: Vec<String>,
+    pub handler: Arc<Py<PyAny>>,
+    pub args: Vec<String>,
 }
 
 impl Route {
-    pub(crate) fn new(
+    pub fn new(
         method: String,
         path_pattern: String,
         handler: Py<PyAny>,
@@ -91,8 +91,10 @@ impl Route {
         )
     }
 
-    pub(crate) fn match_path(&self, path: &str) -> Option<HashMap<String, String>> {
-        self.regex.captures(path).map(|caps| {
+    pub fn match_path(&self, path: &str) -> Option<HashMap<String, String>> {
+        let base_path = path.split('?').next()?;
+
+        self.regex.captures(base_path).map(|caps| {
             self.param_names
                 .iter()
                 .filter_map(|name| {

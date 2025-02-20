@@ -81,7 +81,7 @@ def login(cred: dict, app_data: AppData):
     return Status.UNAUTHORIZED()
 
 
-def user_info(user_id, app_data: AppData) -> Response:
+def user_info(user_id: int, app_data: AppData) -> Response:
     result = app_data.conn.execute("select * from user where id=?", (user_id,))
     return Response(Status.OK(), {"user": result.fetchone()})
 
