@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{exceptions::PyException, prelude::*};
 
 #[derive(Clone)]
 #[pyclass]
@@ -32,10 +32,11 @@ impl Request {
         self.headers.clone()
     }
 
-    pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let json = PyModule::import(py, "json")?;
-        json.call_method("loads", (self.body.clone(),), None)?
-            .extract()
+    pub fn json(&self) -> PyResult<HashMap<String, String>> {
+        Ok(
+            serde_json::from_str(&self.body)
+                .map_err(|err| PyException::new_err(err.to_string()))?,
+        )
     }
 
     pub fn url(&self) -> String {

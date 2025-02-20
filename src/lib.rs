@@ -4,7 +4,7 @@ mod response;
 mod routing;
 mod status;
 
-use into_response::IntoResponse;
+use into_response::{convert, IntoResponse};
 use request::Request;
 use response::Response;
 use routing::{delete, get, patch, post, put, Route, Router};
@@ -125,8 +125,11 @@ impl HttpServer {
         kwargs.set_item("request", request.clone())?;
         kwargs.set_item("next", route.handler.clone_ref(py))?;
 
-        if self.app_data.is_some() && route.args.contains(&"app_data".to_string()) {
-            kwargs.set_item("app_data", self.app_data.as_ref().unwrap().clone_ref(py))?;
+        if let (Some(app_data), true) = (
+            self.app_data.as_ref(),
+            route.args.contains(&"app_data".to_string()),
+        ) {
+            kwargs.set_item("app_data", app_data)?;
         }
 
         for (key, value) in &params {
@@ -142,20 +145,21 @@ impl HttpServer {
             }
         }
 
-        if let (Some(body_name), Ok(body)) = (body_param_name, request.json(py)) {
-            kwargs.set_item(body_name.clone(), body.clone_ref(py))?;
+        if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json()) {
+            kwargs.set_item(body_name, body)?;
         }
 
         for middleware in &router.middlewares {
             let result = middleware.call(py, (), Some(&kwargs))?;
-            to_response!(result, py);
+            return convert(result, py);
         }
 
         kwargs.del_item("request")?;
         kwargs.del_item("next")?;
 
         let result = route.handler.call(py, (), Some(&kwargs))?;
-        to_response!(result, py);
+
+        convert(result, py)
     }
 }
 

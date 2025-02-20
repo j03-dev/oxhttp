@@ -1,6 +1,6 @@
-use pyo3::{prelude::*, types::PyDict, IntoPyObjectExt};
+use pyo3::{prelude::*, IntoPyObjectExt};
 
-use crate::{into_response::IntoResponse, status::Status, to_response};
+use crate::{convert, into_response::IntoResponse, status::Status};
 
 use std::fmt;
 
@@ -28,7 +28,7 @@ impl Response {
             body: body.to_string(),
         }
         .into_py_any(py)?;
-        to_response!(rslt, py);
+        convert(rslt, py)
     }
 }
 

@@ -1,5 +1,9 @@
 use crate::{status::Status, Response};
-use pyo3::{types::PyDict, Py};
+use pyo3::{
+    prelude::*,
+    types::{PyAny, PyDict},
+    Py,
+};
 
 pub trait IntoResponse {
     fn into_response(&self) -> Response;
@@ -55,39 +59,30 @@ impl IntoResponse for i32 {
     }
 }
 
-#[macro_export]
 macro_rules! to_response {
-    ($rslt:expr, $py:expr) => {{
-        if let Ok(response) = $rslt.extract::<PyRef<'_, Response>>($py) {
-            return Ok(response.clone());
-        }
-
-        if let Ok(status) = $rslt.extract::<PyRef<'_, Status>>($py) {
-            return Ok(status.into_response());
-        }
-
-        if let Ok((body, status_code)) = $rslt.extract::<(String, Status)>($py) {
-            return Ok((body, status_code).into_response());
-        }
-
-        if let Ok((body, status_code)) = $rslt.extract::<(Py<PyDict>, Status)>($py) {
-            return Ok((body, status_code).into_response());
-        }
-
-        if let Ok(body) = $rslt.extract::<Py<PyDict>>($py) {
-            return Ok(body.into_response());
-        }
-
-        if let Ok(body) = $rslt.extract::<String>($py) {
-            return Ok(body.into_response());
-        }
-
-        if let Ok(body) = $rslt.extract::<i32>($py) {
-            return Ok(body.into_response());
-        }
+    ($rslt:expr, $py:expr, $($type:ty),*) => {{
+        $(
+            if let Ok(value) = $rslt.extract::<$type>($py) {
+                return Ok(value.into_response());
+            }
+        )*
 
         return Err(pyo3::exceptions::PyException::new_err(
             "Failed to convert this type to response",
         ));
     }};
+}
+
+pub fn convert(result: Py<PyAny>, py: Python<'_>) -> PyResult<Response> {
+    to_response!(
+        result,
+        py,
+        PyRef<'_, Response>,
+        PyRef<'_, Status>,
+        (String, Status),
+        (Py<PyDict>, Status),
+        Py<PyDict>,
+        String,
+        i32
+    )
 }

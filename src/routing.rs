@@ -57,10 +57,11 @@ impl Route {
         let parameters = sig.getattr("parameters")?;
         let values = parameters.call_method("values", (), None)?.try_iter()?;
 
-        let mut args = Vec::new();
+        let mut args: Vec<String> = Vec::new();
 
         for param in values {
-            let key: String = param?.into_pyobject(py)?.getattr("name")?.extract()?;
+            let param = param?.into_pyobject(py)?;
+            let key = param.getattr("name")?.extract()?;
             args.push(key);
         }
 
