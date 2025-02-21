@@ -20,7 +20,7 @@ use std::{
     },
 };
 
-use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::PyDict};
 
 #[pyclass]
 struct HttpServer {
@@ -65,7 +65,7 @@ impl HttpServer {
         let listener = TcpListener::bind(self.addr)?;
         println!("Listening on {}", self.addr);
 
-        while !running.load(Ordering::SeqCst) {
+        while running.load(Ordering::SeqCst) {
             let (mut socket, _) = listener.accept()?;
 
             let mut buffer = [0; 1024];
