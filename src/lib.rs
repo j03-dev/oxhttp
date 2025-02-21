@@ -4,20 +4,23 @@ mod response;
 mod routing;
 mod status;
 
-use into_response::{IntoResponse, convert};
+use into_response::{convert, IntoResponse};
 use request::Request;
 use response::Response;
-use routing::{Route, Router, delete, get, patch, post, put, static_files};
+use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
 use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
 
 #[pyclass]
 struct HttpServer {
@@ -47,11 +50,26 @@ impl HttpServer {
     }
 
     fn run(&self, py: Python<'_>) -> PyResult<()> {
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+
+        let addr = self.addr;
+
+        ctrlc::set_handler(move || {
+            println!("\nReceived Ctrl+C! Shutting Down...");
+            r.store(false, Ordering::SeqCst);
+            if let Ok(stream) = std::net::TcpStream::connect(addr) {
+                drop(stream);
+            }
+        })
+        .map_err(|err| PyException::new_err(err.to_string()))?;
+
         let listener = TcpListener::bind(self.addr)?;
         println!("Listening on {}", self.addr);
 
-        loop {
+        while !running.load(Ordering::SeqCst) {
             let (mut socket, _) = listener.accept()?;
+
             let mut buffer = [0; 1024];
             let n = socket.read(&mut buffer)?;
             let request_str = String::from_utf8_lossy(&buffer[..n]);
@@ -108,6 +126,8 @@ impl HttpServer {
             socket.write_all(response.to_string().as_bytes())?;
             socket.flush()?;
         }
+
+        Ok(())
     }
 }
 
