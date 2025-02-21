@@ -6,6 +6,7 @@ use pyo3::{
 };
 
 pub trait IntoResponse {
+    #[allow(clippy::wrong_self_convention)]
     fn into_response(&self) -> Response;
 }
 

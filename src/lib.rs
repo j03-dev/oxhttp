@@ -123,7 +123,6 @@ impl HttpServer {
         let kwargs = PyDict::new(py);
 
         kwargs.set_item("request", request.clone())?;
-        kwargs.set_item("next", route.handler.clone_ref(py))?;
 
         if let (Some(app_data), true) = (
             self.app_data.as_ref(),
@@ -149,16 +148,15 @@ impl HttpServer {
             kwargs.set_item(body_name, body)?;
         }
 
-        for middleware in &router.middlewares {
+        if let Some(middleware) = &router.middleware {
+            kwargs.set_item("next", route.handler.clone_ref(py))?;
             let result = middleware.call(py, (), Some(&kwargs))?;
             return convert(result, py);
         }
 
         kwargs.del_item("request")?;
-        kwargs.del_item("next")?;
 
         let result = route.handler.call(py, (), Some(&kwargs))?;
-
         convert(result, py)
     }
 }

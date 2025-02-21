@@ -6,25 +6,22 @@ use std::sync::Arc;
 
 type Middleware = Py<PyAny>;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[pyclass]
 pub struct Router {
     pub(crate) routes: Vec<Arc<Route>>,
-    pub(crate) middlewares: Vec<Arc<Middleware>>,
+    pub(crate) middleware: Option<Arc<Middleware>>,
 }
 
 #[pymethods]
 impl Router {
     #[new]
     pub fn new() -> Self {
-        Self {
-            routes: Vec::new(),
-            middlewares: Vec::new(),
-        }
+        Self::default()
     }
 
     fn middleware(&mut self, middleware: Middleware) {
-        self.middlewares.push(Arc::new(middleware));
+        self.middleware = Some(Arc::new(middleware));
     }
 
     fn route(&mut self, route: PyRef<'_, Route>) -> PyResult<()> {

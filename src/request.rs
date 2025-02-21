@@ -33,10 +33,9 @@ impl Request {
     }
 
     pub fn json(&self) -> PyResult<HashMap<String, String>> {
-        Ok(
-            serde_json::from_str(&self.body)
-                .map_err(|err| PyException::new_err(err.to_string()))?,
-        )
+        let json_data = serde_json::from_str(&self.body)
+            .map_err(|err| PyException::new_err(err.to_string()))?;
+        Ok(json_data)
     }
 
     pub fn url(&self) -> String {
