@@ -111,7 +111,7 @@ impl Route {
     }
 }
 
-macro_rules! method {
+macro_rules! methods {
     ($($func:ident),+) => {
         $(
             #[pyfunction]
@@ -123,7 +123,7 @@ macro_rules! method {
     };
 }
 
-method!(get, post, delete, patch, put);
+methods!(get, post, delete, patch, put);
 
 #[pyfunction]
 pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
