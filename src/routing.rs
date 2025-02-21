@@ -1,4 +1,6 @@
+use pyo3::ffi::c_str;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 use regex::{Captures, Regex};
 use std::collections::HashMap;
@@ -6,25 +8,22 @@ use std::sync::Arc;
 
 type Middleware = Py<PyAny>;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[pyclass]
 pub struct Router {
     pub(crate) routes: Vec<Arc<Route>>,
-    pub(crate) middlewares: Vec<Arc<Middleware>>,
+    pub(crate) middleware: Option<Arc<Middleware>>,
 }
 
 #[pymethods]
 impl Router {
     #[new]
     pub fn new() -> Self {
-        Self {
-            routes: Vec::new(),
-            middlewares: Vec::new(),
-        }
+        Self::default()
     }
 
     fn middleware(&mut self, middleware: Middleware) {
-        self.middlewares.push(Arc::new(middleware));
+        self.middleware = Some(Arc::new(middleware));
     }
 
     fn route(&mut self, route: PyRef<'_, Route>) -> PyResult<()> {
@@ -81,8 +80,13 @@ impl Route {
         let regex_pattern = re
             .replace_all(pattern, |caps: &Captures| {
                 let param = &caps[1];
-                param_names.push(param.to_string());
-                format!(r"(?P<{}>[^/]+)", param)
+                let param_name = if param.contains(":") {
+                    param.split(":").next().unwrap()
+                } else {
+                    param
+                };
+                param_names.push(param_name.to_string());
+                format!(r"(?P<{}>.+)", param_name)
             })
             .to_string();
 
@@ -120,3 +124,38 @@ macro_rules! method {
 }
 
 method!(get, post, delete, patch, put);
+
+#[pyfunction]
+pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
+    let pathlib = py.import("pathlib")?;
+    let oxhttp = py.import("oxhttp")?;
+
+    let kwargs = &PyDict::new(py);
+    kwargs.set_item("Path", pathlib.getattr("Path")?)?;
+    kwargs.set_item("directory", directory)?;
+    kwargs.set_item("Response", oxhttp.getattr("Response")?)?;
+    kwargs.set_item("Status", oxhttp.getattr("Status")?)?;
+
+    let handler = py.eval(
+        c_str!(
+            r#"lambda path: \
+                Response(
+                    Status.OK(),
+                    open(Path(directory) / path, 'rb')\
+                        .read()\
+                        .decode('utf-8')\
+                )\
+                if (Path(directory) / path).exists()\
+                else Status.NOT_FOUND()"#
+        ),
+        Some(kwargs),
+        None,
+    )?;
+
+    Route::new(
+        "GET".to_string(),
+        format!("/{path}/<path:path>"),
+        handler.into(),
+        py,
+    )
+}

@@ -11,7 +11,7 @@ macro_rules! status_codes {
         #[pymethods]
         impl Status {
         $(
-            #[allow(dead_code, non_snake_case)]
+            #[allow(non_snake_case)]
             #[staticmethod]
             pub fn $kconst() -> Status {
                 Status($num)

@@ -1,7 +1,7 @@
 import sqlite3
 import bcrypt
 from jwt import decode, encode, ExpiredSignatureError, InvalidTokenError
-from oxhttp import HttpServer, Router, get, post, Status, Response, Request
+from oxhttp import HttpServer, Router, get, post, static_files, Status, Response, Request
 from typing import Callable
 
 SECRET = "8b78e057cf6bc3e646097e5c0277f5ccaa2d8ac3b6d4a4d8c73c7f6af02f0ccd"
@@ -105,6 +105,8 @@ pub_router = Router()
 pub_router.route(post("/login", login))
 pub_router.route(post("/register", register))
 pub_router.route(get("/hello/<name>", lambda name: f"Hello {name}"))
+
+pub_router.route(static_files("./static", "static"))
 
 server = HttpServer(("127.0.0.1", 5555))
 server.app_data(AppData)
