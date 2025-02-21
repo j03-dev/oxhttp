@@ -58,11 +58,9 @@ impl HttpServer {
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
             r.store(false, Ordering::SeqCst);
-            if let Ok(stream) = std::net::TcpStream::connect(addr) {
-                drop(stream);
-            }
+            _ = std::net::TcpStream::connect(addr);
         })
-        .map_err(|err| PyException::new_err(err.to_string()))?;
+        .ok();
 
         let listener = TcpListener::bind(self.addr)?;
         println!("Listening on {}", self.addr);
