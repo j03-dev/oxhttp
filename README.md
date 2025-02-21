@@ -1,6 +1,6 @@
 # OxHTTP
 
-*OxHTTP* is Python HTTP server library build in Rust
+_OxHTTP_ is Python HTTP server library build in Rust
 
 example:
 
@@ -22,13 +22,14 @@ if __name__ == "__main__":
 ```
 
 Todo:
+
 - [x] Handler
 - [x] HttpResponse
 - [x] Routing
-- [ ] use tokio::net::Listener
+- [ ] use tokio::net::Listener
 - [x] middleware
-- [x] app data
+- [x] app data
 - [x] pass request in handler
-- [ ] serve static file
+- [x] serve static file
 - [ ] templating
 - [x] query uri
