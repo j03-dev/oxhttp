@@ -130,11 +130,11 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
     let pathlib = py.import("pathlib")?;
     let oxhttp = py.import("oxhttp")?;
 
-    let kwargs = &PyDict::new(py);
-    kwargs.set_item("Path", pathlib.getattr("Path")?)?;
-    kwargs.set_item("directory", directory)?;
-    kwargs.set_item("Response", oxhttp.getattr("Response")?)?;
-    kwargs.set_item("Status", oxhttp.getattr("Status")?)?;
+    let locals = &PyDict::new(py);
+    locals.set_item("Path", pathlib.getattr("Path")?)?;
+    locals.set_item("directory", directory)?;
+    locals.set_item("Response", oxhttp.getattr("Response")?)?;
+    locals.set_item("Status", oxhttp.getattr("Status")?)?;
 
     let handler = py.eval(
         c_str!(
@@ -148,14 +148,9 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
                 if (Path(directory) / path).exists()\
                 else Status.NOT_FOUND()"#
         ),
-        Some(kwargs),
         None,
+        Some(locals),
     )?;
 
-    Route::new(
-        "GET".to_string(),
-        format!("/{path}/<path:path>"),
-        handler.into(),
-        py,
-    )
+    get(format!("/{path}/<path:path>"), handler.into(), py)
 }
