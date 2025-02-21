@@ -1,8 +1,8 @@
-use crate::{status::Status, Response};
+use crate::{Response, status::Status};
 use pyo3::{
+    Py,
     prelude::*,
     types::{PyAny, PyDict},
-    Py,
 };
 
 pub trait IntoResponse {

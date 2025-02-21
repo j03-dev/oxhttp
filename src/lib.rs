@@ -4,10 +4,10 @@ mod response;
 mod routing;
 mod status;
 
-use into_response::{convert, IntoResponse};
+use into_response::{IntoResponse, convert};
 use request::Request;
 use response::Response;
-use routing::{delete, get, patch, post, put, static_files, Route, Router};
+use routing::{Route, Router, delete, get, patch, post, put, static_files};
 use status::Status;
 
 use std::{
