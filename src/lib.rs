@@ -1,11 +1,13 @@
 mod into_response;
 mod request;
+mod request_parser;
 mod response;
 mod routing;
 mod status;
 
 use into_response::{convert, IntoResponse};
 use request::Request;
+use request_parser::RequestParser;
 use response::Response;
 use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
@@ -62,8 +64,8 @@ impl HttpServer {
         })
         .ok();
 
-        let listener = TcpListener::bind(self.addr)?;
-        println!("Listening on {}", self.addr);
+        let listener = TcpListener::bind(addr)?;
+        println!("Listening on {}", addr);
 
         while running.load(Ordering::SeqCst) {
             let (mut socket, _) = listener.accept()?;
@@ -72,57 +74,30 @@ impl HttpServer {
             let n = socket.read(&mut buffer)?;
             let request_str = String::from_utf8_lossy(&buffer[..n]);
 
-            let request_line = request_str.lines().next().unwrap_or("");
-            let parts: Vec<&str> = request_line.split_whitespace().collect();
-            if parts.len() < 3 {
-                continue;
-            }
+            if let Some(ref request) = RequestParser::parse(&request_str) {
+                let mut response = Status::NOT_FOUND().into_response();
 
-            let method = parts[0].to_string();
-            let path = parts[1].to_string();
-
-            let mut headers = HashMap::new();
-            let mut body = String::new();
-            let mut is_body = false;
-
-            for line in request_str.lines().skip(1) {
-                if is_body {
-                    body.push_str(line);
-                    body.push('\n');
-                } else if line.is_empty() {
-                    is_body = true;
-                }
-                let header_parts: Vec<&str> = line.split(": ").collect();
-                if header_parts.len() == 2 {
-                    headers.insert(header_parts[0].to_string(), header_parts[1].to_string());
-                }
-            }
-
-            let request = Request::new(method.clone(), path.clone(), headers, body);
-
-            let mut response = Status::NOT_FOUND().into_response();
-
-            for router in &self.routers {
-                for route in &router.routes {
-                    if route.method == method {
-                        if let Some(params) = route.match_path(&path) {
-                            match self.process_response(py, router, route, request.clone(), params)
-                            {
-                                Ok(resp) => response = resp,
-                                Err(e) => {
-                                    response = Status::INTERNAL_SERVER_ERROR()
+                for router in &self.routers {
+                    for route in &router.routes {
+                        if route.method == request.method {
+                            if let Some(params) = route.match_path(&request.url) {
+                                response = match self
+                                    .process_response(py, router, route, request, params)
+                                {
+                                    Ok(response) => response,
+                                    Err(e) => Status::INTERNAL_SERVER_ERROR()
                                         .into_response()
-                                        .body(e.to_string())
-                                }
+                                        .body(e.to_string()),
+                                };
+                                break;
                             }
-                            break;
                         }
                     }
                 }
-            }
 
-            socket.write_all(response.to_string().as_bytes())?;
-            socket.flush()?;
+                socket.write_all(response.to_string().as_bytes())?;
+                socket.flush()?;
+            }
         }
 
         Ok(())
@@ -135,7 +110,7 @@ impl HttpServer {
         py: Python<'_>,
         router: &Router,
         route: &Arc<Route>,
-        request: Request,
+        request: &Request,
         params: HashMap<String, String>,
     ) -> PyResult<Response> {
         let kwargs = PyDict::new(py);
