@@ -137,7 +137,7 @@ impl HttpServer {
             }
         }
 
-        if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json()) {
+        if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
             kwargs.set_item(body_name, body)?;
         }
 
