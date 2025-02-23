@@ -1,6 +1,6 @@
-use pyo3::{IntoPyObjectExt, prelude::*};
+use pyo3::{prelude::*, IntoPyObjectExt};
 
-use crate::{convert, into_response::IntoResponse, status::Status};
+use crate::{convert_to_response, into_response::IntoResponse, status::Status};
 
 use std::fmt;
 
@@ -22,13 +22,13 @@ impl Response {
         content_type: String,
         py: Python<'_>,
     ) -> PyResult<Self> {
-        let rslt = Self {
+        let result = Self {
             status: status.clone(),
             content_type,
             body: body.to_string(),
         }
         .into_py_any(py)?;
-        convert(rslt, py)
+        convert_to_response(result, py)
     }
 }
 
