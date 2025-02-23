@@ -70,9 +70,8 @@ impl HttpServer {
         while running.load(Ordering::SeqCst) {
             let (mut socket, _) = listener.accept()?;
 
-            let mut buffer = [0; 1024];
-            let n = socket.read(&mut buffer)?;
-            let request_str = String::from_utf8_lossy(&buffer[..n]);
+            let mut request_data = Vec::new();
+            let mut buffer = [0; 8192];
 
             if let Ok(ref request) = RequestParser::parse(&request_str) {
                 let mut response = Status::NOT_FOUND().into_response();
@@ -87,10 +86,36 @@ impl HttpServer {
                         };
                         break;
                     }
+                    Err(_) => {
+                        break;
+                    }
                 }
+            }
+            if let Ok(request_str) = String::from_utf8(request_data) {
+                if let Some(ref request) = RequestParser::parse(&request_str) {
+                    let mut response = Status::NOT_FOUND().into_response();
 
-                socket.write_all(response.to_string().as_bytes())?;
-                socket.flush()?;
+                    for router in &self.routers {
+                        for route in &router.routes {
+                            if route.method == request.method {
+                                if let Some(params) = route.match_path(&request.url) {
+                                    response = match self
+                                        .process_response(py, router, route, request, params)
+                                    {
+                                        Ok(response) => response,
+                                        Err(e) => Status::INTERNAL_SERVER_ERROR()
+                                            .into_response()
+                                            .body(e.to_string()),
+                                    };
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    socket.write_all(response.to_string().as_bytes())?;
+                    socket.flush()?;
+                }
             }
         }
 
