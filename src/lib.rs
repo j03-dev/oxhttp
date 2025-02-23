@@ -111,8 +111,6 @@ impl HttpServer {
         let route = match_route.value.clone();
         let params = match_route.params.clone();
 
-        kwargs.set_item("request", request.clone())?;
-
         if let (Some(app_data), true) = (
             self.app_data.as_ref(),
             route.args.contains(&"app_data".to_string()),
@@ -144,12 +142,11 @@ impl HttpServer {
         }
 
         if let Some(middleware) = &router.middleware {
+            kwargs.set_item("request", request.clone())?;
             kwargs.set_item("next", route.handler.clone_ref(py))?;
             let result = middleware.call(py, (), Some(&kwargs))?;
             return convert_to_response(result, py);
         }
-
-        kwargs.del_item("request")?;
 
         let result = route.handler.call(py, (), Some(&kwargs))?;
         convert_to_response(result, py)
