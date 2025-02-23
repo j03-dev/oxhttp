@@ -1,8 +1,8 @@
-use crate::{Response, status::Status};
+use crate::{status::Status, Response};
 use pyo3::{
-    Py,
     prelude::*,
     types::{PyAny, PyDict},
+    Py,
 };
 
 pub trait IntoResponse {
@@ -74,7 +74,7 @@ macro_rules! to_response {
     }};
 }
 
-pub fn convert(result: Py<PyAny>, py: Python<'_>) -> PyResult<Response> {
+pub fn convert_to_response(result: Py<PyAny>, py: Python<'_>) -> PyResult<Response> {
     to_response!(
         result,
         py,

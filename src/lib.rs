@@ -5,7 +5,8 @@ mod response;
 mod routing;
 mod status;
 
-use into_response::{convert, IntoResponse};
+use into_response::{convert_to_response, IntoResponse};
+use matchit::Match;
 use request::Request;
 use request_parser::RequestParser;
 use response::Response;
@@ -13,7 +14,6 @@ use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
 use std::{
-    collections::HashMap,
     io::{Read, Write},
     net::{SocketAddr, TcpListener},
     sync::{
@@ -70,50 +70,27 @@ impl HttpServer {
         while running.load(Ordering::SeqCst) {
             let (mut socket, _) = listener.accept()?;
 
-            let mut request_data = Vec::new();
-            let mut buffer = [0; 8192];
+            let mut buffer = [0; 1024];
+            let n = socket.read(&mut buffer)?;
+            let request_str = String::from_utf8_lossy(&buffer[..n]);
 
-            loop {
-                match socket.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        request_data.extend_from_slice(&buffer[..n]);
-                        if let Ok(request_str) = String::from_utf8(request_data.clone()) {
-                            if request_str.contains("\r\n\r\n") {
-                                break;
-                            }
-                        }
-                    }
-                    Err(_) => {
+            if let Ok(ref request) = RequestParser::parse(&request_str) {
+                let mut response = Status::NOT_FOUND().into_response();
+
+                for router in &self.routers {
+                    if let Ok(route) = &router.router.at(&request.url) {
+                        response = match self.process_response(py, router, route, request) {
+                            Ok(response) => response,
+                            Err(e) => Status::INTERNAL_SERVER_ERROR()
+                                .into_response()
+                                .body(e.to_string()),
+                        };
                         break;
                     }
                 }
-            }
-            if let Ok(request_str) = String::from_utf8(request_data) {
-                if let Some(ref request) = RequestParser::parse(&request_str) {
-                    let mut response = Status::NOT_FOUND().into_response();
 
-                    for router in &self.routers {
-                        for route in &router.routes {
-                            if route.method == request.method {
-                                if let Some(params) = route.match_path(&request.url) {
-                                    response = match self
-                                        .process_response(py, router, route, request, params)
-                                    {
-                                        Ok(response) => response,
-                                        Err(e) => Status::INTERNAL_SERVER_ERROR()
-                                            .into_response()
-                                            .body(e.to_string()),
-                                    };
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    socket.write_all(response.to_string().as_bytes())?;
-                    socket.flush()?;
-                }
+                socket.write_all(response.to_string().as_bytes())?;
+                socket.flush()?;
             }
         }
 
@@ -126,11 +103,13 @@ impl HttpServer {
         &self,
         py: Python<'_>,
         router: &Router,
-        route: &Arc<Route>,
+        match_route: &Match<'_, '_, &Route>,
         request: &Request,
-        params: HashMap<String, String>,
     ) -> PyResult<Response> {
         let kwargs = PyDict::new(py);
+
+        let route = match_route.value.clone();
+        let params = match_route.params.clone();
 
         kwargs.set_item("request", request.clone())?;
 
@@ -141,14 +120,20 @@ impl HttpServer {
             kwargs.set_item("app_data", app_data)?;
         }
 
-        for (key, value) in &params {
+        for (key, value) in params.iter() {
             kwargs.set_item(key, value)?;
         }
 
         let mut body_param_name = None;
 
         for key in route.args.clone() {
-            if key != "app_data" && !params.contains_key(&key) {
+            if key != "app_data"
+                && params
+                    .iter()
+                    .filter(|(k, _)| *k == key)
+                    .collect::<Vec<_>>()
+                    .is_empty()
+            {
                 body_param_name = Some(key);
                 break;
             }
@@ -161,13 +146,13 @@ impl HttpServer {
         if let Some(middleware) = &router.middleware {
             kwargs.set_item("next", route.handler.clone_ref(py))?;
             let result = middleware.call(py, (), Some(&kwargs))?;
-            return convert(result, py);
+            return convert_to_response(result, py);
         }
 
         kwargs.del_item("request")?;
 
         let result = route.handler.call(py, (), Some(&kwargs))?;
-        convert(result, py)
+        convert_to_response(result, py)
     }
 }
 
