@@ -1,43 +1,12 @@
-use pyo3::ffi::c_str;
-use pyo3::prelude::*;
-use pyo3::types::PyDict;
-
-use regex::{Captures, Regex};
-use std::collections::HashMap;
 use std::sync::Arc;
 
-type Middleware = Py<PyAny>;
+use pyo3::{ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
-#[derive(Clone, Default)]
-#[pyclass]
-pub struct Router {
-    pub(crate) routes: Vec<Arc<Route>>,
-    pub(crate) middleware: Option<Arc<Middleware>>,
-}
-
-#[pymethods]
-impl Router {
-    #[new]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    fn middleware(&mut self, middleware: Middleware) {
-        self.middleware = Some(Arc::new(middleware));
-    }
-
-    fn route(&mut self, route: PyRef<'_, Route>) -> PyResult<()> {
-        self.routes.push(Arc::new(route.clone()));
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[pyclass]
 pub struct Route {
     pub method: String,
-    pub regex: Regex,
-    pub param_names: Vec<String>,
+    pub path: String,
     pub handler: Arc<Py<PyAny>>,
     pub args: Vec<String>,
 }
@@ -45,12 +14,10 @@ pub struct Route {
 impl Route {
     pub fn new(
         method: String,
-        path_pattern: String,
-        handler: Py<PyAny>,
+        path: String,
+        handler: Arc<Py<PyAny>>,
         py: Python<'_>,
     ) -> PyResult<Self> {
-        let (regex, param_names) = Self::compile_route_pattern(&path_pattern);
-
         let inspect = PyModule::import(py, "inspect")?;
         let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
         let parameters = sig.getattr("parameters")?;
@@ -60,70 +27,55 @@ impl Route {
 
         for param in values {
             let param = param?.into_pyobject(py)?;
-            let key = param.getattr("name")?.extract()?;
-            args.push(key);
+            let name = param.getattr("name")?.extract()?;
+            args.push(name);
         }
 
-        Ok(Self {
+        Ok(Route {
             method,
-            regex,
-            param_names,
-            handler: Arc::new(handler),
+            path,
+            handler,
             args,
-        })
-    }
-
-    fn compile_route_pattern(pattern: &str) -> (Regex, Vec<String>) {
-        let re = Regex::new(r"<([^>]+)>").unwrap();
-        let mut param_names = Vec::new();
-
-        let regex_pattern = re
-            .replace_all(pattern, |caps: &Captures| {
-                let param = &caps[1];
-                let param_name = if param.contains(":") {
-                    param.split(":").next().unwrap()
-                } else {
-                    param
-                };
-                param_names.push(param_name.to_string());
-                format!(r"(?P<{}>.+)", param_name)
-            })
-            .to_string();
-
-        (
-            Regex::new(&format!("^{}$", regex_pattern)).unwrap(),
-            param_names,
-        )
-    }
-
-    pub fn match_path(&self, path: &str) -> Option<HashMap<String, String>> {
-        let base_path = path.split('?').next()?;
-
-        self.regex.captures(base_path).map(|caps| {
-            self.param_names
-                .iter()
-                .filter_map(|name| {
-                    caps.name(name)
-                        .map(|m| (name.clone(), m.as_str().to_string()))
-                })
-                .collect()
         })
     }
 }
 
 macro_rules! methods {
-    ($($func:ident),+) => {
+    ($($method:ident),*) => {
         $(
             #[pyfunction]
-            pub fn $func(path: String, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Route> {
-                let method_name = stringify!($func).to_uppercase();
-                Route::new(method_name, path, handler, py)
+            pub fn $method(path: String, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Route> {
+                Route::new(stringify!($method).to_string().to_uppercase(), path, Arc::new(handler), py)
             }
-        )+
-    };
+        )*
+    }
 }
 
-methods!(get, post, delete, patch, put);
+methods!(get, post, put, patch, delete);
+
+#[derive(Default, Clone, Debug)]
+#[pyclass]
+pub struct Router {
+    pub router: matchit::Router<Route>,
+    pub middleware: Option<Arc<Py<PyAny>>>,
+}
+
+#[pymethods]
+impl Router {
+    #[new]
+    pub fn new() -> Self {
+        Router::default()
+    }
+
+    fn middleware(&mut self, middleware: Py<PyAny>) {
+        self.middleware = Some(Arc::new(middleware));
+    }
+
+    fn route(&mut self, route: PyRef<Route>) {
+        let path = route.path.clone();
+        self.router.insert(path, route.clone()).unwrap();
+    }
+}
 
 #[pyfunction]
 pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
@@ -152,5 +104,5 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
         Some(locals),
     )?;
 
-    get(format!("/{path}/<path:path>"), handler.into(), py)
+    get(format!("/{path}/{{*path}}"), handler.into(), py)
 }

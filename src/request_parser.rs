@@ -1,37 +1,47 @@
-use crate::request::Request;
-
+use crate::Request;
 use std::collections::HashMap;
 
 pub struct RequestParser;
 
 impl RequestParser {
-    pub fn parse(request_str: &str) -> Option<Request> {
-        let parts: Vec<&str> = request_str.split_whitespace().collect();
-        if parts.len() < 3 {
-            return None;
-        }
+    pub fn parse(request_str: &str) -> Result<Request, httparse::Error> {
+        let mut headers = [httparse::EMPTY_HEADER; 64];
+        let mut req = httparse::Request::new(&mut headers);
 
-        let method = parts[0].to_string();
-        let path = parts[1].to_string();
+        match req.parse(request_str.as_bytes())? {
+            httparse::Status::Complete(header_size) => {
+                let method = req.method.unwrap_or("GET").to_string();
+                let url = req.path.unwrap_or("/").to_string();
 
-        let mut headers = HashMap::new();
-        let mut body = String::new();
-        let mut is_body = false;
+                let mut header_map = HashMap::new();
+                let mut content_type = String::from("text/plain");
+                let mut content_length = 0;
 
-        for line in request_str.lines().skip(1) {
-            if is_body {
-                body.push_str(line);
-                body.push('\n');
-            } else if line.is_empty() {
-                is_body = true;
+                for header in req.headers.iter() {
+                    let name = header.name.to_string();
+                    let value = String::from_utf8_lossy(header.value).to_string();
+
+                    match name.as_str() {
+                        "Content-Type" => content_type = value.clone(),
+                        "Content-Length" => {
+                            content_length = value.parse().unwrap_or(0);
+                        }
+                        _ => {}
+                    }
+
+                    header_map.insert(name, value);
+                }
+
+                let mut request =
+                    Request::new(method, url, content_type, content_length, header_map);
+
+                if content_length > 0 {
+                    let body = &request_str[header_size..];
+                    request.set_body(body.to_string());
+                }
+                Ok(request)
             }
-            let header_parts: Vec<&str> = line.split(": ").collect();
-            if header_parts.len() == 2 {
-                headers.insert(header_parts[0].to_string(), header_parts[1].to_string());
-            }
+            httparse::Status::Partial => Err(httparse::Error::Status),
         }
-
-        let request = Request::new(method, path, headers, body);
-        Some(request)
     }
 }

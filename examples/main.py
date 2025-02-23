@@ -104,7 +104,7 @@ sec_router.route(get("/me", user_info))
 pub_router = Router()
 pub_router.route(post("/login", login))
 pub_router.route(post("/register", register))
-pub_router.route(get("/hello/<name>", lambda name: f"Hello {name}"))
+pub_router.route(get("/hello/{name}", lambda name: f"Hello {name}"))
 
 pub_router.route(static_files("./static", "static"))
 

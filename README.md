@@ -20,7 +20,7 @@ router = Router()
 
 router.route(get("/", lambda: Response(Status.OK(), "Welcome to OxHTTP!")))
 router.route(
-    get("/hello/<name>", lambda name: Response(Status.OK(), {"message": f"Hello, {name}!"}))
+    get("/hello/{name}", lambda name: Response(Status.OK(), {"message": f"Hello, {name}!"}))
 )
 
 app = HttpServer(("127.0.0.1", 5555))

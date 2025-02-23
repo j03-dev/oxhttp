@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use pyo3::{prelude::*, types::PyDict};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[pyclass]
 pub struct Request {
     pub method: String,
     pub url: String,
+    pub content_type: String,
+    pub content_length: usize,
     pub headers: HashMap<String, String>,
-    pub body: String,
+    pub body: Option<String>,
 }
 
 #[pymethods]
@@ -17,14 +19,17 @@ impl Request {
     pub fn new(
         method: String,
         url: String,
+        content_type: String,
+        content_length: usize,
         headers: HashMap<String, String>,
-        body: String,
     ) -> Self {
         Self {
             method,
             url,
+            content_type,
+            content_length,
             headers,
-            body,
+            body: None,
         }
     }
 
@@ -34,8 +39,11 @@ impl Request {
 
     pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let json = PyModule::import(py, "json")?;
-        json.call_method("loads", (self.body.clone(),), None)?
-            .extract()
+        if let Some(body) = &self.body {
+            json.call_method1("loads", (body,))?.extract()
+        } else {
+            Ok(PyDict::new(py).into())
+        }
     }
 
     pub fn url(&self) -> String {
@@ -67,5 +75,9 @@ impl Request {
                 Some((key, value))
             })
             .collect()
+    }
+
+    pub fn set_body(&mut self, body: String) {
+        self.body = Some(body);
     }
 }

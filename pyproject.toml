@@ -11,5 +11,6 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+description = "OxHttp is http server for python build in rust"
 [tool.maturin]
 features = ["pyo3/extension-module"]
