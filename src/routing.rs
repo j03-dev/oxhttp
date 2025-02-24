@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
@@ -56,7 +56,7 @@ methods!(get, post, put, patch, delete);
 #[derive(Default, Clone, Debug)]
 #[pyclass]
 pub struct Router {
-    pub routes: std::collections::HashMap<String, matchit::Router<Route>>,
+    pub routes: HashMap<String, matchit::Router<Route>>,
     pub middleware: Option<Arc<Py<PyAny>>>,
 }
 

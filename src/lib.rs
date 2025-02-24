@@ -15,24 +15,27 @@ use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Semaphore;
 use tokio::{io::AsyncReadExt, net::TcpListener};
 
+use std::mem::transmute;
 use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{channel, Sender},
         Arc,
     },
 };
 
 use pyo3::{prelude::*, types::PyDict};
 
+type MatchedRoute = &'static Match<'static, 'static, &'static Route>;
+
 struct ProcessRequest {
     request: Request,
     router: Router,
-    route: &'static Match<'static, 'static, &'static Route>,
+    matched_route: MatchedRoute,
     response_sender: Sender<Response>,
 }
 
@@ -44,6 +47,7 @@ struct HttpServer {
     app_data: Option<Arc<Py<PyAny>>>,
     max_connections: Arc<Semaphore>,
     buffer_size: usize,
+    channel_capacity: usize,
 }
 
 #[pymethods]
@@ -57,6 +61,7 @@ impl HttpServer {
             app_data: None,
             max_connections: Arc::new(Semaphore::new(100)),
             buffer_size: 16384,
+            channel_capacity: 100,
         })
     }
 
@@ -74,10 +79,16 @@ impl HttpServer {
         Ok(())
     }
 
-    #[pyo3(signature=(max_connections = 100, buffer_size=16384))]
-    fn config(&mut self, max_connections: usize, buffer_size: usize) -> PyResult<()> {
+    #[pyo3(signature=(max_connections = 100, buffer_size=16384, channel_capacity = 100))]
+    fn config(
+        &mut self,
+        max_connections: usize,
+        buffer_size: usize,
+        channel_capacity: usize,
+    ) -> PyResult<()> {
         self.max_connections = Arc::new(Semaphore::new(max_connections));
         self.buffer_size = buffer_size;
+        self.channel_capacity = channel_capacity;
         Ok(())
     }
 }
@@ -87,8 +98,9 @@ impl HttpServer {
         let running = Arc::new(AtomicBool::new(true));
         let r = running.clone();
         let addr = self.addr;
+        let channel_capacity = self.channel_capacity;
 
-        let (request_sender, request_receiver) = channel::<ProcessRequest>();
+        let (request_sender, mut request_receiver) = channel::<ProcessRequest>(channel_capacity);
 
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
@@ -105,6 +117,7 @@ impl HttpServer {
         let sender = request_sender.clone();
         let max_connections = self.max_connections.clone();
         let buffer_size = self.buffer_size;
+        let channel_capacity = self.channel_capacity;
 
         tokio::spawn(async move {
             while running_clone.load(Ordering::SeqCst) {
@@ -127,24 +140,20 @@ impl HttpServer {
                         for router in &routers {
                             if let Some(method) = router.routes.get(&request.method) {
                                 if let Ok(route) = method.at(&request.url) {
-                                    let (response_sender, response_receive) = channel();
+                                    let (response_sender, mut response_receive) =
+                                        channel(channel_capacity);
 
-                                    let static_route = unsafe {
-                                        std::mem::transmute::<
-                                            &Match<'_, '_, &Route>,
-                                            &'static Match<'static, 'static, &'static Route>,
-                                        >(&route)
-                                    };
+                                    let matched_route: MatchedRoute = unsafe { transmute(&route) };
 
                                     let process_request = ProcessRequest {
                                         request: request.clone(),
                                         router: router.clone(),
-                                        route: static_route,
+                                        matched_route,
                                         response_sender,
                                     };
 
-                                    if sender.send(process_request).is_ok() {
-                                        if let Ok(response) = response_receive.recv() {
+                                    if sender.send(process_request).await.is_ok() {
+                                        if let Some(response) = response_receive.recv().await {
                                             socket
                                                 .write_all(response.to_string().as_bytes())
                                                 .await?;
@@ -171,7 +180,7 @@ impl HttpServer {
                     match self.process_response(
                         py,
                         &process_request.router,
-                        process_request.route,
+                        process_request.matched_route,
                         &process_request.request,
                     ) {
                         Ok(response) => response,
@@ -181,7 +190,7 @@ impl HttpServer {
                     }
                 });
 
-                _ = process_request.response_sender.send(response);
+                _ = process_request.response_sender.send(response).await;
             }
         }
 
