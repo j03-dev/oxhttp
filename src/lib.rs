@@ -13,22 +13,33 @@ use response::Response;
 use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
+use tokio::io::AsyncWriteExt;
+use tokio::{io::AsyncReadExt, net::TcpListener};
+
 use std::{
-    io::{Read, Write},
-    net::{SocketAddr, TcpListener},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
+        mpsc::{channel, Sender},
         Arc,
     },
 };
 
 use pyo3::{prelude::*, types::PyDict};
 
+struct ProcessRequest {
+    request: Request,
+    router: Router,
+    route: &'static Match<'static, 'static, &'static Route>,
+    response_sender: Sender<Response>,
+}
+
+#[derive(Clone)]
 #[pyclass]
 struct HttpServer {
     addr: SocketAddr,
     routers: Vec<Router>,
-    app_data: Option<Py<PyAny>>,
+    app_data: Option<Arc<Py<PyAny>>>,
 }
 
 #[pymethods]
@@ -44,18 +55,27 @@ impl HttpServer {
     }
 
     fn app_data(&mut self, app_data: Py<PyAny>) {
-        self.app_data = Some(app_data)
+        self.app_data = Some(Arc::new(app_data))
     }
 
     fn attach(&mut self, router: PyRef<'_, Router>) {
         self.routers.push(router.clone());
     }
 
-    fn run(&self, py: Python<'_>) -> PyResult<()> {
+    fn run(&self) -> PyResult<()> {
+        let runtime = tokio::runtime::Runtime::new()?;
+        runtime.block_on(async move { self.run_server().await })?;
+        Ok(())
+    }
+}
+
+impl HttpServer {
+    async fn run_server(&self) -> PyResult<()> {
         let running = Arc::new(AtomicBool::new(true));
         let r = running.clone();
-
         let addr = self.addr;
+
+        let (request_sender, request_receiver) = channel::<ProcessRequest>();
 
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
@@ -64,41 +84,83 @@ impl HttpServer {
         })
         .ok();
 
-        let listener = TcpListener::bind(addr)?;
+        let listener = TcpListener::bind(addr).await?;
         println!("Listening on {}", addr);
 
-        while running.load(Ordering::SeqCst) {
-            let (mut socket, _) = listener.accept()?;
+        let routers = self.routers.clone();
+        let running_clone = running.clone();
+        let sender = request_sender.clone();
 
-            let mut buffer = [0; 1024];
-            let n = socket.read(&mut buffer)?;
-            let request_str = String::from_utf8_lossy(&buffer[..n]);
+        tokio::spawn(async move {
+            while running_clone.load(Ordering::SeqCst) {
+                let (mut socket, _) = listener.accept().await?;
+                let sender = sender.clone();
+                let routers = routers.clone();
 
-            if let Ok(ref request) = RequestParser::parse(&request_str) {
-                let mut response = Status::NOT_FOUND().into_response();
+                tokio::spawn(async move {
+                    let mut buffer = [0; 1024];
+                    let n = socket.read(&mut buffer).await?;
+                    let request_str = String::from_utf8_lossy(&buffer[..n]);
 
-                for router in &self.routers {
-                    if let Ok(route) = &router.router.at(&request.url) {
-                        response = match self.process_response(py, router, route, request) {
-                            Ok(response) => response,
-                            Err(e) => Status::INTERNAL_SERVER_ERROR()
-                                .into_response()
-                                .body(e.to_string()),
-                        };
-                        break;
+                    if let Ok(request) = RequestParser::parse(&request_str) {
+                        for router in &routers {
+                            if let Ok(route) = router.router.at(&request.url) {
+                                let (response_sender, response_receive) = channel();
+
+                                let static_route = unsafe {
+                                    std::mem::transmute::<
+                                        &Match<'_, '_, &Route>,
+                                        &'static Match<'static, 'static, &'static Route>,
+                                    >(&route)
+                                };
+
+                                let process_request = ProcessRequest {
+                                    request: request.clone(),
+                                    router: router.clone(),
+                                    route: static_route,
+                                    response_sender,
+                                };
+
+                                if sender.send(process_request).is_ok() {
+                                    if let Ok(response) = response_receive.recv() {
+                                        socket.write_all(response.to_string().as_bytes()).await?;
+                                        socket.flush().await?;
+                                    }
+                                }
+
+                                break;
+                            }
+                        }
                     }
-                }
+                    Ok::<(), PyErr>(())
+                });
+            }
+            Ok::<(), PyErr>(())
+        });
 
-                socket.write_all(response.to_string().as_bytes())?;
-                socket.flush()?;
+        while running.load(Ordering::SeqCst) {
+            if let Ok(process_request) = request_receiver.try_recv() {
+                let response = Python::with_gil(|py| {
+                    match self.process_response(
+                        py,
+                        &process_request.router,
+                        process_request.route,
+                        &process_request.request,
+                    ) {
+                        Ok(response) => response,
+                        Err(e) => Status::INTERNAL_SERVER_ERROR()
+                            .into_response()
+                            .body(e.to_string()),
+                    }
+                });
+
+                _ = process_request.response_sender.send(response);
             }
         }
 
         Ok(())
     }
-}
 
-impl HttpServer {
     fn process_response(
         &self,
         py: Python<'_>,
@@ -115,7 +177,7 @@ impl HttpServer {
             self.app_data.as_ref(),
             route.args.contains(&"app_data".to_string()),
         ) {
-            kwargs.set_item("app_data", app_data)?;
+            kwargs.set_item("app_data", app_data.clone_ref(py))?;
         }
 
         for (key, value) in params.iter() {
