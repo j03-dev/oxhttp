@@ -125,31 +125,35 @@ impl HttpServer {
 
                     if let Ok(request) = RequestParser::parse(&request_str) {
                         for router in &routers {
-                            if let Ok(route) = router.router.at(&request.url) {
-                                let (response_sender, response_receive) = channel();
+                            if let Some(method) = router.routes.get(&request.method) {
+                                if let Ok(route) = method.at(&request.url) {
+                                    let (response_sender, response_receive) = channel();
 
-                                let static_route = unsafe {
-                                    std::mem::transmute::<
-                                        &Match<'_, '_, &Route>,
-                                        &'static Match<'static, 'static, &'static Route>,
-                                    >(&route)
-                                };
+                                    let static_route = unsafe {
+                                        std::mem::transmute::<
+                                            &Match<'_, '_, &Route>,
+                                            &'static Match<'static, 'static, &'static Route>,
+                                        >(&route)
+                                    };
 
-                                let process_request = ProcessRequest {
-                                    request: request.clone(),
-                                    router: router.clone(),
-                                    route: static_route,
-                                    response_sender,
-                                };
+                                    let process_request = ProcessRequest {
+                                        request: request.clone(),
+                                        router: router.clone(),
+                                        route: static_route,
+                                        response_sender,
+                                    };
 
-                                if sender.send(process_request).is_ok() {
-                                    if let Ok(response) = response_receive.recv() {
-                                        socket.write_all(response.to_string().as_bytes()).await?;
-                                        socket.flush().await?;
+                                    if sender.send(process_request).is_ok() {
+                                        if let Ok(response) = response_receive.recv() {
+                                            socket
+                                                .write_all(response.to_string().as_bytes())
+                                                .await?;
+                                            socket.flush().await?;
+                                        }
                                     }
-                                }
 
-                                break;
+                                    break;
+                                }
                             }
                         }
                     }

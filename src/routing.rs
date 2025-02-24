@@ -52,11 +52,10 @@ macro_rules! methods {
 }
 
 methods!(get, post, put, patch, delete);
-
 #[derive(Default, Clone, Debug)]
 #[pyclass]
 pub struct Router {
-    pub router: matchit::Router<Route>,
+    pub routes: std::collections::HashMap<String, matchit::Router<Route>>,
     pub middleware: Option<Arc<Py<PyAny>>>,
 }
 
@@ -72,8 +71,11 @@ impl Router {
     }
 
     fn route(&mut self, route: PyRef<Route>) {
-        let path = route.path.clone();
-        self.router.insert(path, route.clone()).unwrap();
+        let method_router = self.routes.entry(route.method.clone()).or_default();
+
+        method_router
+            .insert(&route.path, route.clone())
+            .expect("Failed to insert route");
     }
 }
 
