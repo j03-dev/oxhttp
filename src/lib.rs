@@ -176,19 +176,19 @@ impl HttpServer {
 
         while running.load(Ordering::SeqCst) {
             if let Ok(process_request) = request_receiver.try_recv() {
-                let response = Python::with_gil(|py| {
-                    match self.process_response(
-                        py,
+                let response = match self
+                    .process_response(
                         &process_request.router,
                         process_request.route,
                         &process_request.request,
-                    ) {
-                        Ok(response) => response,
-                        Err(e) => Status::INTERNAL_SERVER_ERROR()
-                            .into_response()
-                            .body(e.to_string()),
-                    }
-                });
+                    )
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(e) => Status::INTERNAL_SERVER_ERROR()
+                        .into_response()
+                        .body(e.to_string()),
+                };
 
                 _ = process_request.response_sender.send(response).await;
             }
@@ -197,57 +197,58 @@ impl HttpServer {
         Ok(())
     }
 
-    fn process_response(
+    async fn process_response(
         &self,
-        py: Python<'_>,
         router: &Router,
         matchit_route: MatchitRoute,
         request: &Request,
     ) -> PyResult<Response> {
-        let kwargs = PyDict::new(py);
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
 
-        let route = matchit_route.value.clone();
-        let params = matchit_route.params.clone();
+            let route = matchit_route.value.clone();
+            let params = matchit_route.params.clone();
 
-        if let (Some(app_data), true) = (
-            self.app_data.as_ref(),
-            route.args.contains(&"app_data".to_string()),
-        ) {
-            kwargs.set_item("app_data", app_data.clone_ref(py))?;
-        }
-
-        for (key, value) in params.iter() {
-            kwargs.set_item(key, value)?;
-        }
-
-        let mut body_param_name = None;
-
-        for key in route.args.clone() {
-            if key != "app_data"
-                && params
-                    .iter()
-                    .filter(|(k, _)| *k == key)
-                    .collect::<Vec<_>>()
-                    .is_empty()
-            {
-                body_param_name = Some(key);
-                break;
+            if let (Some(app_data), true) = (
+                self.app_data.as_ref(),
+                route.args.contains(&"app_data".to_string()),
+            ) {
+                kwargs.set_item("app_data", app_data.clone_ref(py))?;
             }
-        }
 
-        if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
-            kwargs.set_item(body_name, body)?;
-        }
+            for (key, value) in params.iter() {
+                kwargs.set_item(key, value)?;
+            }
 
-        if let Some(middleware) = &router.middleware {
-            kwargs.set_item("request", request.clone())?;
-            kwargs.set_item("next", route.handler.clone_ref(py))?;
-            let result = middleware.call(py, (), Some(&kwargs))?;
-            return convert_to_response(result, py);
-        }
+            let mut body_param_name = None;
 
-        let result = route.handler.call(py, (), Some(&kwargs))?;
-        convert_to_response(result, py)
+            for key in route.args.clone() {
+                if key != "app_data"
+                    && params
+                        .iter()
+                        .filter(|(k, _)| *k == key)
+                        .collect::<Vec<_>>()
+                        .is_empty()
+                {
+                    body_param_name = Some(key);
+                    break;
+                }
+            }
+
+            if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
+                kwargs.set_item(body_name, body)?;
+            }
+
+            let result = if let Some(middleware) = &router.middleware {
+                kwargs.set_item("request", request.clone())?;
+                kwargs.set_item("next", route.handler.clone_ref(py))?;
+                middleware.call(py, (), Some(&kwargs))?
+            } else {
+                route.handler.call(py, (), Some(&kwargs))?
+            };
+
+            convert_to_response(result, py)
+        })
     }
 }
 
