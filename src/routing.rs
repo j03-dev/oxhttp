@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use pyo3::{ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
+use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
 #[derive(Clone, Debug)]
 #[pyclass]
@@ -56,7 +56,7 @@ methods!(get, post, put, patch, delete);
 #[derive(Default, Clone, Debug)]
 #[pyclass]
 pub struct Router {
-    pub router: matchit::Router<Route>,
+    pub routes: std::collections::HashMap<String, matchit::Router<Route>>,
     pub middleware: Option<Arc<Py<PyAny>>>,
 }
 
@@ -71,9 +71,12 @@ impl Router {
         self.middleware = Some(Arc::new(middleware));
     }
 
-    fn route(&mut self, route: PyRef<Route>) {
-        let path = route.path.clone();
-        self.router.insert(path, route.clone()).unwrap();
+    fn route(&mut self, route: PyRef<Route>) -> PyResult<()> {
+        let method_router = self.routes.entry(route.method.clone()).or_default();
+        method_router
+            .insert(&route.path, route.clone())
+            .map_err(|err| PyException::new_err(err.to_string()))?;
+        Ok(())
     }
 }
 
