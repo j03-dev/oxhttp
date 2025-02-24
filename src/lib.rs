@@ -30,12 +30,12 @@ use std::{
 
 use pyo3::{prelude::*, types::PyDict};
 
-type MatchedRoute = &'static Match<'static, 'static, &'static Route>;
+type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
 
 struct ProcessRequest {
     request: Request,
     router: Router,
-    matched_route: MatchedRoute,
+    route: MatchitRoute,
     response_sender: Sender<Response>,
 }
 
@@ -143,12 +143,12 @@ impl HttpServer {
                                     let (response_sender, mut response_receive) =
                                         channel(channel_capacity);
 
-                                    let matched_route: MatchedRoute = unsafe { transmute(&route) };
+                                    let route: MatchitRoute = unsafe { transmute(&route) };
 
                                     let process_request = ProcessRequest {
                                         request: request.clone(),
                                         router: router.clone(),
-                                        matched_route,
+                                        route,
                                         response_sender,
                                     };
 
@@ -180,7 +180,7 @@ impl HttpServer {
                     match self.process_response(
                         py,
                         &process_request.router,
-                        process_request.matched_route,
+                        process_request.route,
                         &process_request.request,
                     ) {
                         Ok(response) => response,
@@ -201,13 +201,13 @@ impl HttpServer {
         &self,
         py: Python<'_>,
         router: &Router,
-        match_route: &Match<'_, '_, &Route>,
+        matchit_route: MatchitRoute,
         request: &Request,
     ) -> PyResult<Response> {
         let kwargs = PyDict::new(py);
 
-        let route = match_route.value.clone();
-        let params = match_route.params.clone();
+        let route = matchit_route.value.clone();
+        let params = matchit_route.params.clone();
 
         if let (Some(app_data), true) = (
             self.app_data.as_ref(),
