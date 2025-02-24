@@ -7,6 +7,7 @@ mod status;
 
 use into_response::{convert_to_response, IntoResponse};
 use matchit::Match;
+use pyo3::exceptions::PyException;
 use request::Request;
 use request_parser::RequestParser;
 use response::Response;
@@ -14,6 +15,7 @@ use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 use tokio::{io::AsyncReadExt, net::TcpListener};
 
 use std::{
@@ -40,6 +42,8 @@ struct HttpServer {
     addr: SocketAddr,
     routers: Vec<Router>,
     app_data: Option<Arc<Py<PyAny>>>,
+    max_connections: Arc<Semaphore>,
+    buffer_size: usize,
 }
 
 #[pymethods]
@@ -51,6 +55,8 @@ impl HttpServer {
             addr: SocketAddr::new(ip.parse()?, port),
             routers: Vec::new(),
             app_data: None,
+            max_connections: Arc::new(Semaphore::new(100)),
+            buffer_size: 16384,
         })
     }
 
@@ -65,6 +71,13 @@ impl HttpServer {
     fn run(&self) -> PyResult<()> {
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async move { self.run_server().await })?;
+        Ok(())
+    }
+
+    #[pyo3(signature=(max_connections = 100, buffer_size=16384))]
+    fn config(&mut self, max_connections: usize, buffer_size: usize) -> PyResult<()> {
+        self.max_connections = Arc::new(Semaphore::new(max_connections));
+        self.buffer_size = buffer_size;
         Ok(())
     }
 }
@@ -90,15 +103,23 @@ impl HttpServer {
         let routers = self.routers.clone();
         let running_clone = running.clone();
         let sender = request_sender.clone();
+        let max_connections = self.max_connections.clone();
+        let buffer_size = self.buffer_size;
 
         tokio::spawn(async move {
             while running_clone.load(Ordering::SeqCst) {
+                let permit = max_connections
+                    .clone()
+                    .acquire_owned()
+                    .await
+                    .map_err(|err| PyException::new_err(err.to_string()))?;
                 let (mut socket, _) = listener.accept().await?;
                 let sender = sender.clone();
                 let routers = routers.clone();
 
                 tokio::spawn(async move {
-                    let mut buffer = [0; 1024];
+                    let _permit = permit;
+                    let mut buffer = vec![0; buffer_size];
                     let n = socket.read(&mut buffer).await?;
                     let request_str = String::from_utf8_lossy(&buffer[..n]);
 
