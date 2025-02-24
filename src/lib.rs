@@ -156,6 +156,8 @@ impl HttpServer {
                                 }
                             }
                         }
+                        let response = Status::NOT_FOUND().into_response().to_string();
+                        socket.write_all(response.as_bytes()).await?;
                     }
                     Ok::<(), PyErr>(())
                 });

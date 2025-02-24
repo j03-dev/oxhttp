@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use pyo3::{ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
+use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
 #[derive(Clone, Debug)]
 #[pyclass]
@@ -52,6 +52,7 @@ macro_rules! methods {
 }
 
 methods!(get, post, put, patch, delete);
+
 #[derive(Default, Clone, Debug)]
 #[pyclass]
 pub struct Router {
@@ -70,12 +71,12 @@ impl Router {
         self.middleware = Some(Arc::new(middleware));
     }
 
-    fn route(&mut self, route: PyRef<Route>) {
+    fn route(&mut self, route: PyRef<Route>) -> PyResult<()> {
         let method_router = self.routes.entry(route.method.clone()).or_default();
-
         method_router
             .insert(&route.path, route.clone())
-            .expect("Failed to insert route");
+            .map_err(|err| PyException::new_err(err.to_string()))?;
+        Ok(())
     }
 }
 
