@@ -15,24 +15,27 @@ use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Semaphore;
 use tokio::{io::AsyncReadExt, net::TcpListener};
 
+use std::mem::transmute;
 use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{channel, Sender},
         Arc,
     },
 };
 
 use pyo3::{prelude::*, types::PyDict};
 
+type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
+
 struct ProcessRequest {
     request: Request,
     router: Router,
-    route: &'static Match<'static, 'static, &'static Route>,
+    route: MatchitRoute,
     response_sender: Sender<Response>,
 }
 
@@ -44,6 +47,7 @@ struct HttpServer {
     app_data: Option<Arc<Py<PyAny>>>,
     max_connections: Arc<Semaphore>,
     buffer_size: usize,
+    channel_capacity: usize,
 }
 
 #[pymethods]
@@ -57,6 +61,7 @@ impl HttpServer {
             app_data: None,
             max_connections: Arc::new(Semaphore::new(100)),
             buffer_size: 16384,
+            channel_capacity: 100,
         })
     }
 
@@ -74,10 +79,16 @@ impl HttpServer {
         Ok(())
     }
 
-    #[pyo3(signature=(max_connections = 100, buffer_size=16384))]
-    fn config(&mut self, max_connections: usize, buffer_size: usize) -> PyResult<()> {
+    #[pyo3(signature=(max_connections = 100, buffer_size=16384, channel_capacity = 100))]
+    fn config(
+        &mut self,
+        max_connections: usize,
+        buffer_size: usize,
+        channel_capacity: usize,
+    ) -> PyResult<()> {
         self.max_connections = Arc::new(Semaphore::new(max_connections));
         self.buffer_size = buffer_size;
+        self.channel_capacity = channel_capacity;
         Ok(())
     }
 }
@@ -87,8 +98,9 @@ impl HttpServer {
         let running = Arc::new(AtomicBool::new(true));
         let r = running.clone();
         let addr = self.addr;
+        let channel_capacity = self.channel_capacity;
 
-        let (request_sender, request_receiver) = channel::<ProcessRequest>();
+        let (request_sender, mut request_receiver) = channel::<ProcessRequest>(channel_capacity);
 
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
@@ -105,6 +117,7 @@ impl HttpServer {
         let sender = request_sender.clone();
         let max_connections = self.max_connections.clone();
         let buffer_size = self.buffer_size;
+        let channel_capacity = self.channel_capacity;
 
         tokio::spawn(async move {
             while running_clone.load(Ordering::SeqCst) {
@@ -127,24 +140,20 @@ impl HttpServer {
                         for router in &routers {
                             if let Some(method) = router.routes.get(&request.method) {
                                 if let Ok(route) = method.at(&request.url) {
-                                    let (response_sender, response_receive) = channel();
+                                    let (response_sender, mut response_receive) =
+                                        channel(channel_capacity);
 
-                                    let static_route = unsafe {
-                                        std::mem::transmute::<
-                                            &Match<'_, '_, &Route>,
-                                            &'static Match<'static, 'static, &'static Route>,
-                                        >(&route)
-                                    };
+                                    let route: MatchitRoute = unsafe { transmute(&route) };
 
                                     let process_request = ProcessRequest {
                                         request: request.clone(),
                                         router: router.clone(),
-                                        route: static_route,
+                                        route,
                                         response_sender,
                                     };
 
-                                    if sender.send(process_request).is_ok() {
-                                        if let Ok(response) = response_receive.recv() {
+                                    if sender.send(process_request).await.is_ok() {
+                                        if let Some(response) = response_receive.recv().await {
                                             socket
                                                 .write_all(response.to_string().as_bytes())
                                                 .await?;
@@ -167,78 +176,79 @@ impl HttpServer {
 
         while running.load(Ordering::SeqCst) {
             if let Ok(process_request) = request_receiver.try_recv() {
-                let response = Python::with_gil(|py| {
-                    match self.process_response(
-                        py,
+                let response = match self
+                    .process_response(
                         &process_request.router,
                         process_request.route,
                         &process_request.request,
-                    ) {
-                        Ok(response) => response,
-                        Err(e) => Status::INTERNAL_SERVER_ERROR()
-                            .into_response()
-                            .body(e.to_string()),
-                    }
-                });
+                    )
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(e) => Status::INTERNAL_SERVER_ERROR()
+                        .into_response()
+                        .body(e.to_string()),
+                };
 
-                _ = process_request.response_sender.send(response);
+                _ = process_request.response_sender.send(response).await;
             }
         }
 
         Ok(())
     }
 
-    fn process_response(
+    async fn process_response(
         &self,
-        py: Python<'_>,
         router: &Router,
-        match_route: &Match<'_, '_, &Route>,
+        matchit_route: MatchitRoute,
         request: &Request,
     ) -> PyResult<Response> {
-        let kwargs = PyDict::new(py);
+        Python::with_gil(|py| {
+            let kwargs = PyDict::new(py);
 
-        let route = match_route.value.clone();
-        let params = match_route.params.clone();
+            let route = matchit_route.value.clone();
+            let params = matchit_route.params.clone();
 
-        if let (Some(app_data), true) = (
-            self.app_data.as_ref(),
-            route.args.contains(&"app_data".to_string()),
-        ) {
-            kwargs.set_item("app_data", app_data.clone_ref(py))?;
-        }
-
-        for (key, value) in params.iter() {
-            kwargs.set_item(key, value)?;
-        }
-
-        let mut body_param_name = None;
-
-        for key in route.args.clone() {
-            if key != "app_data"
-                && params
-                    .iter()
-                    .filter(|(k, _)| *k == key)
-                    .collect::<Vec<_>>()
-                    .is_empty()
-            {
-                body_param_name = Some(key);
-                break;
+            if let (Some(app_data), true) = (
+                self.app_data.as_ref(),
+                route.args.contains(&"app_data".to_string()),
+            ) {
+                kwargs.set_item("app_data", app_data.clone_ref(py))?;
             }
-        }
 
-        if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
-            kwargs.set_item(body_name, body)?;
-        }
+            for (key, value) in params.iter() {
+                kwargs.set_item(key, value)?;
+            }
 
-        if let Some(middleware) = &router.middleware {
-            kwargs.set_item("request", request.clone())?;
-            kwargs.set_item("next", route.handler.clone_ref(py))?;
-            let result = middleware.call(py, (), Some(&kwargs))?;
-            return convert_to_response(result, py);
-        }
+            let mut body_param_name = None;
 
-        let result = route.handler.call(py, (), Some(&kwargs))?;
-        convert_to_response(result, py)
+            for key in route.args.clone() {
+                if key != "app_data"
+                    && params
+                        .iter()
+                        .filter(|(k, _)| *k == key)
+                        .collect::<Vec<_>>()
+                        .is_empty()
+                {
+                    body_param_name = Some(key);
+                    break;
+                }
+            }
+
+            if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
+                kwargs.set_item(body_name, body)?;
+            }
+
+            let result = if let Some(middleware) = &router.middleware {
+                kwargs.set_item("request", request.clone())?;
+                kwargs.set_item("next", route.handler.clone_ref(py))?;
+                middleware.call(py, (), Some(&kwargs))?
+            } else {
+                route.handler.call(py, (), Some(&kwargs))?
+            };
+
+            convert_to_response(result, py)
+        })
     }
 }
 

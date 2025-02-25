@@ -1,8 +1,18 @@
 import sqlite3
-import bcrypt
-from jwt import decode, encode, ExpiredSignatureError, InvalidTokenError
-from oxhttp import HttpServer, Router, get, post, static_files, Status, Response, Request
 from typing import Callable
+
+import bcrypt
+from jwt import ExpiredSignatureError, InvalidTokenError, decode, encode
+from oxhttp import (
+    HttpServer,
+    Request,
+    Response,
+    Router,
+    Status,
+    get,
+    post,
+    static_files,
+)
 
 SECRET = "8b78e057cf6bc3e646097e5c0277f5ccaa2d8ac3b6d4a4d8c73c7f6af02f0ccd"
 
