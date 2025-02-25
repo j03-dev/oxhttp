@@ -107,11 +107,17 @@ def jwt_middleware(request: Request, next: Callable, **kwargs):
     return Status.UNAUTHORIZED()
 
 
+def print_request(request: Request, next: Callable, **kwargs):
+    print(request)
+    return next(**kwargs)
+
+
 sec_router = Router()
 sec_router.middleware(jwt_middleware)
 sec_router.route(get("/me", user_info))
 
 pub_router = Router()
+pub_router.middleware(print_request)
 pub_router.route(post("/login", login))
 pub_router.route(post("/register", register))
 pub_router.route(get("/hello/{name}", lambda name: f"Hello {name}"))

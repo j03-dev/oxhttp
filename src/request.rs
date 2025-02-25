@@ -7,8 +7,6 @@ use pyo3::{prelude::*, types::PyDict};
 pub struct Request {
     pub method: String,
     pub url: String,
-    pub content_type: String,
-    pub content_length: usize,
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
 }
@@ -16,18 +14,10 @@ pub struct Request {
 #[pymethods]
 impl Request {
     #[new]
-    pub fn new(
-        method: String,
-        url: String,
-        content_type: String,
-        content_length: usize,
-        headers: HashMap<String, String>,
-    ) -> Self {
+    pub fn new(method: String, url: String, headers: HashMap<String, String>) -> Self {
         Self {
             method,
             url,
-            content_type,
-            content_length,
             headers,
             body: None,
         }
@@ -61,6 +51,10 @@ impl Request {
             return Ok(Some(query_params));
         }
         Ok(None)
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self)
     }
 }
 
