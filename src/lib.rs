@@ -1,23 +1,27 @@
 mod into_response;
 mod request;
-mod request_parser;
 mod response;
 mod routing;
 mod status;
 
+use http_body_util::{BodyExt, Full};
+use hyper::body::{Bytes, Incoming};
 use into_response::{convert_to_response, IntoResponse};
-use matchit::Match;
 use pyo3::exceptions::PyException;
 use request::Request;
-use request_parser::RequestParser;
 use response::Response;
 use routing::{delete, get, patch, post, put, static_files, Route, Router};
 use status::Status;
 
-use tokio::io::AsyncWriteExt;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request as HyperRequest, Response as HyperResponse};
+use hyper_util::rt::TokioIo;
+
+use matchit::Match;
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Semaphore;
-use tokio::{io::AsyncReadExt, net::TcpListener};
 
 use std::mem::transmute;
 use std::{
@@ -31,6 +35,7 @@ use std::{
 use pyo3::{prelude::*, types::PyDict};
 
 type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
+type BoxResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 struct ProcessRequest {
     request: Request,
@@ -46,7 +51,6 @@ struct HttpServer {
     routers: Vec<Router>,
     app_data: Option<Arc<Py<PyAny>>>,
     max_connections: Arc<Semaphore>,
-    buffer_size: usize,
     channel_capacity: usize,
 }
 
@@ -60,7 +64,6 @@ impl HttpServer {
             routers: Vec::new(),
             app_data: None,
             max_connections: Arc::new(Semaphore::new(100)),
-            buffer_size: 16384,
             channel_capacity: 100,
         })
     }
@@ -79,15 +82,9 @@ impl HttpServer {
         Ok(())
     }
 
-    #[pyo3(signature=(max_connections = 100, buffer_size=16384, channel_capacity = 100))]
-    fn config(
-        &mut self,
-        max_connections: usize,
-        buffer_size: usize,
-        channel_capacity: usize,
-    ) -> PyResult<()> {
+    #[pyo3(signature=(max_connections = 100, channel_capacity = 100))]
+    fn config(&mut self, max_connections: usize, channel_capacity: usize) -> PyResult<()> {
         self.max_connections = Arc::new(Semaphore::new(max_connections));
-        self.buffer_size = buffer_size;
         self.channel_capacity = channel_capacity;
         Ok(())
     }
@@ -105,7 +102,6 @@ impl HttpServer {
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
             r.store(false, Ordering::SeqCst);
-            _ = std::net::TcpStream::connect(addr);
         })
         .ok();
 
@@ -116,62 +112,70 @@ impl HttpServer {
         let running_clone = running.clone();
         let sender = request_sender.clone();
         let max_connections = self.max_connections.clone();
-        let buffer_size = self.buffer_size;
         let channel_capacity = self.channel_capacity;
 
         tokio::spawn(async move {
             while running_clone.load(Ordering::SeqCst) {
-                let permit = max_connections
-                    .clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(|err| PyException::new_err(err.to_string()))?;
-                let (mut socket, _) = listener.accept().await?;
+                let permit = max_connections.clone().acquire_owned().await.unwrap();
+                let (stream, _) = listener.accept().await.unwrap();
+                let io = TokioIo::new(stream);
                 let sender = sender.clone();
                 let routers = routers.clone();
 
                 tokio::spawn(async move {
                     let _permit = permit;
-                    let mut buffer = vec![0; buffer_size];
-                    let n = socket.read(&mut buffer).await?;
-                    let request_str = String::from_utf8_lossy(&buffer[..n]);
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(
+                            io,
+                            service_fn(move |req| {
+                                let sender = sender.clone();
+                                let routers = routers.clone();
 
-                    if let Ok(request) = RequestParser::parse(&request_str) {
-                        for router in &routers {
-                            if let Some(method) = router.routes.get(&request.method) {
-                                if let Ok(route) = method.at(&request.url) {
-                                    let (response_sender, mut response_receive) =
-                                        channel(channel_capacity);
+                                async move {
+                                    let request = convert_hyper_request(req).await.unwrap();
 
-                                    let route: MatchitRoute = unsafe { transmute(&route) };
+                                    for router in &routers {
+                                        if let Some(method) = router.routes.get(&request.method) {
+                                            if let Ok(route) = method.at(&request.url) {
+                                                let (response_sender, mut respond_receive) =
+                                                    channel(channel_capacity);
 
-                                    let process_request = ProcessRequest {
-                                        request: request.clone(),
-                                        router: router.clone(),
-                                        route,
-                                        response_sender,
-                                    };
+                                                let route: MatchitRoute =
+                                                    unsafe { transmute(&route) };
 
-                                    if sender.send(process_request).await.is_ok() {
-                                        if let Some(response) = response_receive.recv().await {
-                                            socket
-                                                .write_all(response.to_string().as_bytes())
-                                                .await?;
-                                            socket.flush().await?;
+                                                let process_request = ProcessRequest {
+                                                    request: request.clone(),
+                                                    router: router.clone(),
+                                                    route,
+                                                    response_sender,
+                                                };
+
+                                                if sender.send(process_request).await.is_ok() {
+                                                    if let Some(response) =
+                                                        respond_receive.recv().await
+                                                    {
+                                                        return convert_to_hyper_response(response);
+                                                    }
+                                                }
+                                                break;
+                                            }
                                         }
                                     }
 
-                                    break;
+                                    convert_to_hyper_response(Status::FOUND().into_response())
                                 }
-                            }
-                        }
-                        let response = Status::NOT_FOUND().into_response().to_string();
-                        socket.write_all(response.as_bytes()).await?;
+                            }),
+                        )
+                        .await
+                    {
+                        return Err(PyException::new_err(format!(
+                            "Error serving connectio {err}"
+                        )));
                     }
+
                     Ok::<(), PyErr>(())
                 });
             }
-            Ok::<(), PyErr>(())
         });
 
         while running.load(Ordering::SeqCst) {
@@ -250,6 +254,38 @@ impl HttpServer {
             convert_to_response(result, py)
         })
     }
+}
+
+async fn convert_hyper_request(req: HyperRequest<Incoming>) -> BoxResult<Request> {
+    let method = req.method().to_string();
+    let uri = req.uri().to_string();
+
+    let mut headers = std::collections::HashMap::new();
+    for (key, value) in req.headers() {
+        headers.insert(
+            key.to_string(),
+            value.to_str().unwrap_or_default().to_string(),
+        );
+    }
+
+    let mut request = Request::new(method, uri, headers);
+
+    let body_bytes = req.collect().await?.to_bytes();
+    let body = String::from_utf8_lossy(&body_bytes).to_string();
+    if !body.is_empty() {
+        request.set_body(body);
+    }
+
+    Ok(request)
+}
+
+fn convert_to_hyper_response(
+    response: Response,
+) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
+    HyperResponse::builder()
+        .status(response.status.code())
+        .header("Content-Type", response.content_type)
+        .body(Full::new(Bytes::from(response.body)))
 }
 
 #[pymodule]

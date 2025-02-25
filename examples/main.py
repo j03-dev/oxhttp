@@ -98,7 +98,7 @@ def user_info(user_id: int, app_data: AppData) -> Response:
 
 def jwt_middleware(request: Request, next: Callable, **kwargs):
     headers = request.headers()
-    token = headers.get("Authorization", "").replace("Bearer ", "")
+    token = headers.get("authorization", "").replace("Bearer ", "")
 
     if token:
         if payload := decode_jwt(token):
@@ -107,17 +107,11 @@ def jwt_middleware(request: Request, next: Callable, **kwargs):
     return Status.UNAUTHORIZED()
 
 
-def print_request(request: Request, next: Callable, **kwargs):
-    print(request)
-    return next(**kwargs)
-
-
 sec_router = Router()
 sec_router.middleware(jwt_middleware)
 sec_router.route(get("/me", user_info))
 
 pub_router = Router()
-pub_router.middleware(print_request)
 pub_router.route(post("/login", login))
 pub_router.route(post("/register", register))
 pub_router.route(get("/hello/{name}", lambda name: f"Hello {name}"))
