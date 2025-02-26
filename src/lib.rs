@@ -36,7 +36,7 @@ type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
 
 struct ProcessRequest {
     request: Request,
-    router: Router,
+    router: Arc<Router>,
     route: MatchitRoute,
     response_sender: Sender<Response>,
     app_data: Option<Arc<Py<PyAny>>>,
@@ -46,7 +46,7 @@ struct ProcessRequest {
 #[pyclass]
 struct HttpServer {
     addr: SocketAddr,
-    routers: Vec<Router>,
+    routers: Vec<Arc<Router>>,
     app_data: Option<Arc<Py<PyAny>>>,
     max_connections: Arc<Semaphore>,
     channel_capacity: usize,
@@ -71,7 +71,7 @@ impl HttpServer {
     }
 
     fn attach(&mut self, router: PyRef<'_, Router>) {
-        self.routers.push(router.clone());
+        self.routers.push(Arc::new(router.clone()));
     }
 
     fn run(&self) -> PyResult<()> {

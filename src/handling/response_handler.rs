@@ -46,20 +46,20 @@ fn process_response(
 ) -> PyResult<Response> {
     Python::with_gil(|py| {
         let kwargs = &PyDict::new(py);
-        let params = matchit_route.params.clone();
-        let route = matchit_route.value.clone();
+        let params = &matchit_route.params;
+        let route = matchit_route.value;
         let app_data = app_data.clone();
 
-        setup_params(kwargs, &params)?;
-        setup_app_data(app_data, &route, kwargs, py)?;
-        setup_body(&route, kwargs, &params, request, py)?;
+        setup_params(kwargs, params)?;
+        setup_app_data(app_data, route, kwargs, py)?;
+        setup_body(route, kwargs, params, request, py)?;
 
         let result = if let Some(middleware) = &router.middleware {
             kwargs.set_item("request", request.clone())?;
             kwargs.set_item("next", route.handler.clone_ref(py))?;
-            middleware.call(py, (), Some(&kwargs))?
+            middleware.call(py, (), Some(kwargs))?
         } else {
-            route.handler.call(py, (), Some(&kwargs))?
+            route.handler.call(py, (), Some(kwargs))?
         };
 
         convert_to_response(result, py)
@@ -96,7 +96,7 @@ fn setup_body(
 ) -> PyResult<()> {
     let mut body_param_name = None;
 
-    for key in route.args.clone() {
+    for key in route.args.as_ref() {
         if key != "app_data"
             && params
                 .iter()

@@ -8,7 +8,7 @@ pub struct Route {
     pub method: String,
     pub path: String,
     pub handler: Arc<Py<PyAny>>,
-    pub args: Vec<String>,
+    pub args: Arc<Vec<String>>,
 }
 
 impl Route {
@@ -35,7 +35,7 @@ impl Route {
             method,
             path,
             handler,
-            args,
+            args: Arc::new(args),
         })
     }
 }
@@ -84,7 +84,7 @@ impl Router {
     pub fn find<'l>(&self, method: &str, url: &str) -> Option<matchit::Match<'l, 'l, &'l Route>> {
         if let Some(router) = self.routes.get(method) {
             if let Ok(route) = router.at(url) {
-                let route = unsafe { transmute(route) };
+                let route: matchit::Match<'l, 'l, &Route> = unsafe { transmute(route) };
                 return Some(route);
             }
         }

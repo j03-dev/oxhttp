@@ -16,7 +16,7 @@ use crate::{
 pub async fn handle_request(
     req: HyperRequest<Incoming>,
     request_sender: Sender<ProcessRequest>,
-    routers: Vec<Router>,
+    routers: Vec<Arc<Router>>,
     app_data: Option<Arc<Py<PyAny>>>,
     channel_capacity: usize,
 ) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
