@@ -27,7 +27,7 @@ pub async fn handle_request(
 
     for router in &routers {
         if let Some(route) = router.find(&request.method, &request.url) {
-            let (response_sender, mut respond_receive) = channel(channel_capacity); // TODO: Magic Number
+            let (response_sender, mut respond_receive) = channel(channel_capacity);
 
             let route: MatchitRoute = unsafe { transmute(&route) };
 
