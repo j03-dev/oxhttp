@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem::transmute, sync::Arc};
 
 use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
@@ -77,6 +77,18 @@ impl Router {
             .insert(&route.path, route.clone())
             .map_err(|err| PyException::new_err(err.to_string()))?;
         Ok(())
+    }
+}
+
+impl Router {
+    pub fn find<'l>(&self, method: &str, url: &str) -> Option<matchit::Match<'l, 'l, &'l Route>> {
+        if let Some(router) = self.routes.get(method) {
+            if let Ok(route) = router.at(url) {
+                let route = unsafe { transmute(route) };
+                return Some(route);
+            }
+        }
+        None
     }
 }
 
