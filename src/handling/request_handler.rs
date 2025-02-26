@@ -48,7 +48,7 @@ pub async fn handle_request(
         }
     }
 
-    convert_to_hyper_response(Status::FOUND().into_response())
+    convert_to_hyper_response(Status::NOT_FOUND().into_response())
 }
 
 async fn convert_hyper_request(
