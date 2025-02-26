@@ -6,7 +6,7 @@ use pyo3::{prelude::*, types::PyDict};
 #[pyclass]
 pub struct Request {
     pub method: String,
-    pub url: String,
+    pub uri: String,
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
 }
@@ -14,17 +14,13 @@ pub struct Request {
 #[pymethods]
 impl Request {
     #[new]
-    pub fn new(method: String, url: String, headers: HashMap<String, String>) -> Self {
+    pub fn new(method: String, uri: String, headers: HashMap<String, String>) -> Self {
         Self {
             method,
-            url,
+            uri,
             headers,
             body: None,
         }
-    }
-
-    pub fn headers(&self) -> HashMap<String, String> {
-        self.headers.clone()
     }
 
     pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
@@ -36,16 +32,24 @@ impl Request {
         }
     }
 
-    pub fn url(&self) -> String {
-        self.url.clone()
+    fn body(&self) -> Option<String> {
+        self.body.clone()
     }
 
-    pub fn method(&self) -> String {
+    fn headers(&self) -> HashMap<String, String> {
+        self.headers.clone()
+    }
+
+    fn uri(&self) -> String {
+        self.uri.clone()
+    }
+
+    fn method(&self) -> String {
         self.method.clone()
     }
 
-    pub fn query(&self) -> PyResult<Option<HashMap<String, String>>> {
-        let query_string = self.url.split('?').nth(1);
+    fn query(&self) -> PyResult<Option<HashMap<String, String>>> {
+        let query_string = self.uri.split('?').nth(1);
         if let Some(query) = query_string {
             let query_params = Self::parse_query_string(query.to_string());
             return Ok(Some(query_params));

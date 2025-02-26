@@ -26,7 +26,7 @@ pub async fn handle_request(
     let request = convert_hyper_request(req).await.unwrap();
 
     for router in &routers {
-        if let Some(route) = router.find(&request.method, &request.url) {
+        if let Some(route) = router.find(&request.method, &request.uri) {
             let (response_sender, mut respond_receive) = channel(channel_capacity);
 
             let route: MatchitRoute = unsafe { transmute(&route) };

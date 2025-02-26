@@ -81,9 +81,10 @@ impl Router {
 }
 
 impl Router {
-    pub fn find<'l>(&self, method: &str, url: &str) -> Option<matchit::Match<'l, 'l, &'l Route>> {
+    pub fn find<'l>(&self, method: &str, uri: &str) -> Option<matchit::Match<'l, 'l, &'l Route>> {
+        let path = uri.split('?').next().unwrap_or(uri);
         if let Some(router) = self.routes.get(method) {
-            if let Ok(route) = router.at(url) {
+            if let Ok(route) = router.at(path) {
                 let route: matchit::Match<'l, 'l, &Route> = unsafe { transmute(route) };
                 return Some(route);
             }
