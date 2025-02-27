@@ -144,7 +144,8 @@ impl HttpServer {
                         )
                         .await
                         .map_err(|err| {
-                            PyException::new_err(format!("Error serving connection {err}"))
+                            let message = format!("Error serving connection {err}");
+                            PyException::new_err(message)
                         })?;
 
                     Ok::<(), PyErr>(())
