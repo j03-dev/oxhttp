@@ -11,11 +11,8 @@ macro_rules! status_codes {
         #[pymethods]
         impl Status {
         $(
-            #[allow(non_snake_case)]
-            #[staticmethod]
-            pub fn $kconst() -> Status {
-                Status($num)
-            }
+            #[classattr]
+            pub const $kconst: Status = Status($num);
         )+
 
             pub fn reason(&self) -> String {
@@ -27,6 +24,7 @@ macro_rules! status_codes {
                 }
             }
 
+            #[getter]
             pub fn code(&self) -> u16 {
                 self.0
             }
