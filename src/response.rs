@@ -2,21 +2,19 @@ use pyo3::prelude::*;
 
 use crate::{into_response::IntoResponse, status::Status};
 
-use std::fmt;
-
 #[derive(Clone)]
 #[pyclass]
-pub(crate) struct Response {
-    pub(crate) status: Status,
-    pub(crate) content_type: String,
-    pub(crate) body: String,
+pub struct Response {
+    pub status: Status,
+    pub content_type: String,
+    pub body: String,
 }
 
 #[pymethods]
 impl Response {
     #[new]
     #[pyo3(signature=(status, body, content_type="json/application".to_string()))]
-    pub(crate) fn new(
+    pub fn new(
         status: PyRef<'_, Status>,
         body: PyObject,
         content_type: String,
@@ -42,22 +40,8 @@ impl IntoResponse for Response {
 }
 
 impl Response {
-    pub(crate) fn body(mut self, body: String) -> Self {
+    pub fn body(mut self, body: String) -> Self {
         self.body = body;
         self
-    }
-}
-
-impl fmt::Display for Response {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
-            self.status.code(),
-            self.status.reason(),
-            self.content_type,
-            self.body.len(),
-            self.body
-        )
     }
 }
