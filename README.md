@@ -18,9 +18,9 @@ from oxhttp import HttpServer, get, Router, Status, Response
 
 router = Router()
 
-router.route(get("/", lambda: Response(Status.OK(), "Welcome to OxHTTP!")))
+router.route(get("/", lambda: Response(Status.OK, "Welcome to OxHTTP!")))
 router.route(
-    get("/hello/{name}", lambda name: Response(Status.OK(), {"message": f"Hello, {name}!"}))
+    get("/hello/{name}", lambda name: Response(Status.OK, {"message": f"Hello, {name}!"}))
 )
 
 app = HttpServer(("127.0.0.1", 5555))
@@ -34,8 +34,8 @@ if __name__ == "__main__":
 
 ```python
 def auth_middleware(request, next, **kwargs):
-    if "Authorization" not in request.headers():
-        return Status.UNAUTHORIZED()
+    if "Authorization" not in request.headers:
+        return Status.UNAUTHORIZED
     return next(**kwargs)
 
 router = Router()
