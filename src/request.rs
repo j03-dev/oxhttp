@@ -32,18 +32,22 @@ impl Request {
         }
     }
 
+    #[getter]
     fn body(&self) -> Option<String> {
         self.body.clone()
     }
 
+    #[getter]
     fn headers(&self) -> HashMap<String, String> {
         self.headers.clone()
     }
 
+    #[getter]
     fn uri(&self) -> String {
         self.uri.clone()
     }
 
+    #[getter]
     fn method(&self) -> String {
         self.method.clone()
     }

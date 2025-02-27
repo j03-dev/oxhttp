@@ -28,7 +28,7 @@ pub async fn handle_response(running: Arc<AtomicBool>, rx: &mut Receiver<Process
                 process_request.app_data,
             ) {
                 Ok(response) => response,
-                Err(e) => Status::INTERNAL_SERVER_ERROR()
+                Err(e) => Status::INTERNAL_SERVER_ERROR
                     .into_response()
                     .body(e.to_string()),
             };

@@ -58,7 +58,7 @@ def register(cred: dict, app_data: AppData):
     password = cred.get("password")
 
     if not username or not password:
-        return Status.BAD_REQUEST()
+        return Status.BAD_REQUEST
 
     hashed_password = hash_password(password)
 
@@ -68,9 +68,9 @@ def register(cred: dict, app_data: AppData):
             (username, hashed_password),
         )
         conn.commit()
-        return Status.CREATED()
+        return Status.CREATED
     except sqlite3.IntegrityError:
-        return Status.CONFLICT()
+        return Status.CONFLICT
 
 
 def login(cred: dict, app_data: AppData):
@@ -88,23 +88,22 @@ def login(cred: dict, app_data: AppData):
         token = create_jwt(user_id=user[0])
         return {"token": token}
 
-    return Status.UNAUTHORIZED()
+    return Status.UNAUTHORIZED
 
 
 def user_info(user_id: int, app_data: AppData) -> Response:
     result = app_data.conn.execute("select * from user where id=?", (user_id,))
-    return Response(Status.OK(), {"user": result.fetchone()})
+    return Response(Status.OK, {"user": result.fetchone()})
 
 
 def jwt_middleware(request: Request, next: Callable, **kwargs):
-    headers = request.headers()
-    token = headers.get("authorization", "").replace("Bearer ", "")
+    token = request.headers.get("authorization", "").replace("Bearer ", "")
 
     if token:
         if payload := decode_jwt(token):
             kwargs["user_id"] = payload["user_id"]
             return next(**kwargs)
-    return Status.UNAUTHORIZED()
+    return Status.UNAUTHORIZED
 
 
 sec_router = Router()

@@ -13,7 +13,7 @@ pub trait IntoResponse {
 impl IntoResponse for String {
     fn into_response(&self) -> Response {
         Response {
-            status: Status::OK(),
+            status: Status::OK,
             content_type: "text/plain".to_string(),
             body: self.clone(),
         }
@@ -23,7 +23,7 @@ impl IntoResponse for String {
 impl IntoResponse for Py<PyDict> {
     fn into_response(&self) -> Response {
         Response {
-            status: Status::OK(),
+            status: Status::OK,
             content_type: "application/json".to_string(),
             body: self.to_string(),
         }
@@ -53,7 +53,7 @@ impl IntoResponse for (Py<PyDict>, Status) {
 impl IntoResponse for i32 {
     fn into_response(&self) -> Response {
         Response {
-            status: Status::OK(),
+            status: Status::OK,
             content_type: "application/json".to_string(),
             body: self.to_string(),
         }
