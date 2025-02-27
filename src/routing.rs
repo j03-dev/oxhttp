@@ -98,26 +98,27 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
     let pathlib = py.import("pathlib")?;
     let oxhttp = py.import("oxhttp")?;
 
-    let locals = &PyDict::new(py);
-    locals.set_item("Path", pathlib.getattr("Path")?)?;
-    locals.set_item("directory", directory)?;
-    locals.set_item("Response", oxhttp.getattr("Response")?)?;
-    locals.set_item("Status", oxhttp.getattr("Status")?)?;
+    let globals = &PyDict::new(py);
+    globals.set_item("Path", pathlib.getattr("Path")?)?;
+    globals.set_item("directory", directory)?;
+    globals.set_item("Status", oxhttp.getattr("Status")?)?;
+    globals.set_item("Response", oxhttp.getattr("Response")?)?;
 
     let handler = py.eval(
         c_str!(
             r#"lambda path: \
                 Response(
-                    Status.OK(),
+                    Status.OK,
                     open(Path(directory) / path, 'rb')\
                         .read()\
-                        .decode('utf-8')\
+                        .decode('utf-8'),
+                    "text/plain",
                 )\
                 if (Path(directory) / path).exists()\
-                else Status.NOT_FOUND()"#
+                else Status.NOT_FOUND"#
         ),
+        Some(globals),
         None,
-        Some(locals),
     )?;
 
     get(format!("/{path}/{{*path}}"), handler.into(), py)
