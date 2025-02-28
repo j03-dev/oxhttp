@@ -78,10 +78,7 @@ fn setup_app_data(
     kwargs: &Bound<'_, PyDict>,
     py: Python<'_>,
 ) -> PyResult<()> {
-    if let (Some(app_data), true) = (
-        app_data.as_ref(),
-        route.args.contains(&"app_data".to_string()),
-    ) {
+    if let (Some(ref app_data), true) = (app_data, route.args.contains(&"app_data".to_string())) {
         kwargs.set_item("app_data", app_data.clone_ref(py))?;
     }
     Ok(())
@@ -96,7 +93,7 @@ fn setup_body(
 ) -> PyResult<()> {
     let mut body_param_name = None;
 
-    for key in route.args.as_ref() {
+    for key in route.args.iter() {
         if key != "app_data"
             && params
                 .iter()
