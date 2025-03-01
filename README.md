@@ -82,3 +82,4 @@ Todo:
 - [ ] templating
 - [x] query uri
 - [ ] security submodule (jwt,bcrypt..)
+- [ ] websocket
