@@ -96,6 +96,14 @@ def user_info(user_id: int, app_data: AppData) -> Response:
     return Response(Status.OK, {"user": result.fetchone()})
 
 
+def logger(request: Request, next: Callable, **kwargs):
+    method = request.method
+    host = request.headers.get("host")
+    uri = request.uri
+    print(f"method:{method} host:{host} uri:{uri}")
+    return next(**kwargs)
+
+
 def jwt_middleware(request: Request, next: Callable, **kwargs):
     token = request.headers.get("authorization", "").replace("Bearer ", "")
 
@@ -107,10 +115,12 @@ def jwt_middleware(request: Request, next: Callable, **kwargs):
 
 
 sec_router = Router()
+sec_router.middleware(logger)
 sec_router.middleware(jwt_middleware)
 sec_router.route(get("/me", user_info))
 
 pub_router = Router()
+pub_router.middleware(logger)
 pub_router.route(post("/login", login))
 pub_router.route(post("/register", register))
 pub_router.route(get("/hello/{name}", lambda name: f"Hello {name}"))

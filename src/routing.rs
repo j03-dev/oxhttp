@@ -2,6 +2,8 @@ use std::{collections::HashMap, mem::transmute, sync::Arc};
 
 use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
+use crate::middleware::Middleware;
+
 #[derive(Clone, Debug)]
 #[pyclass]
 pub struct Route {
@@ -57,7 +59,7 @@ methods!(get, post, put, patch, delete);
 #[pyclass]
 pub struct Router {
     pub routes: HashMap<String, matchit::Router<Route>>,
-    pub middleware: Option<Arc<Py<PyAny>>>,
+    pub middlewares: Vec<Middleware>,
 }
 
 #[pymethods]
@@ -68,7 +70,8 @@ impl Router {
     }
 
     fn middleware(&mut self, middleware: Py<PyAny>) {
-        self.middleware = Some(Arc::new(middleware));
+        let middleware = Middleware::new(middleware);
+        self.middlewares.push(middleware);
     }
 
     fn route(&mut self, route: PyRef<Route>) -> PyResult<()> {

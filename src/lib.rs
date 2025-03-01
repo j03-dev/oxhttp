@@ -1,5 +1,6 @@
 mod handling;
 mod into_response;
+mod middleware;
 mod request;
 mod response;
 mod routing;

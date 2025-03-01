@@ -11,6 +11,7 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::{
     into_response::{convert_to_response, IntoResponse},
+    middleware::MiddlewareChain,
     request::Request,
     response::Response,
     routing::{Route, Router},
@@ -54,10 +55,9 @@ fn process_response(
         setup_app_data(app_data, route, kwargs, py)?;
         setup_body(route, kwargs, params, request, py)?;
 
-        let result = if let Some(middleware) = &router.middleware {
-            kwargs.set_item("request", request.clone())?;
-            kwargs.set_item("next", route.handler.clone_ref(py))?;
-            middleware.call(py, (), Some(kwargs))?
+        let result = if !router.middlewares.is_empty() {
+            let chain = MiddlewareChain::new(router.middlewares.clone());
+            chain.execute(py, request, &route.handler.clone(), kwargs.clone())?
         } else {
             route.handler.call(py, (), Some(kwargs))?
         };
