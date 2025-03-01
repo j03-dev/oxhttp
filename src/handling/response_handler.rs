@@ -72,6 +72,7 @@ fn setup_params(kwargs: &Bound<'_, PyDict>, params: &matchit::Params<'_, '_>) ->
     }
     Ok(())
 }
+
 fn setup_app_data(
     app_data: Option<Arc<Py<PyAny>>>,
     route: &Route,
