@@ -1,6 +1,7 @@
 use std::{collections::HashMap, mem::transmute, sync::Arc};
 
 use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
+use std::ffi::CStr;
 
 use crate::middleware::Middleware;
 
@@ -10,7 +11,14 @@ pub struct Route {
     pub method: String,
     pub path: String,
     pub handler: Arc<Py<PyAny>>,
-    pub args: Arc<Vec<String>>,
+    pub args: Arc<HashMap<String, Option<String>>>,
+}
+
+#[pymethods]
+impl Route {
+    fn __repr__(&self) -> String {
+        format!("{:#?}", self)
+    }
 }
 
 impl Route {
@@ -25,12 +33,28 @@ impl Route {
         let parameters = sig.getattr("parameters")?;
         let values = parameters.call_method("values", (), None)?.try_iter()?;
 
-        let mut args: Vec<String> = Vec::new();
+        let extract_fields_code = include_str!("python/extract_fields.py");
+        let extr = unsafe { CStr::from_ptr(extract_fields_code.as_ptr().cast()) };
+        let globals = PyDict::new(py);
+        py.run(extr, Some(&globals), None)?;
+        let extract_fields = globals.get_item("extract_fields")?;
+
+        let mut args = HashMap::new();
 
         for param in values {
             let param = param?.into_pyobject(py)?;
-            let name = param.getattr("name")?.extract()?;
-            args.push(name);
+            let name: String = param.getattr("name")?.extract()?;
+            let mut type_info = None;
+            if let Ok(annotation) = param.getattr("annotation") {
+                type_info = Some(
+                    extract_fields
+                        .as_ref()
+                        .unwrap()
+                        .call((annotation,), None)?
+                        .to_string(),
+                );
+            }
+            args.insert(name, type_info);
         }
 
         Ok(Route {
