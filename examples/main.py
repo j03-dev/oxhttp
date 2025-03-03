@@ -66,7 +66,8 @@ def user_info(user_id: int, app_data) -> Response:
 
 
 class AppData:
-    conn = sqlite3.connect("database.db")
+    def __init__(self):
+        self.conn = sqlite3.connect("database.db")
 
 
 pub_router = Router()
