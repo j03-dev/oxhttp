@@ -53,7 +53,7 @@ fn process_response(
 
         setup_params(kwargs, params)?;
         setup_app_data(app_data, route, kwargs, py)?;
-        setup_body(route, kwargs, params, request, py)?;
+        setup_body(route, kwargs, request, py)?;
 
         let result = if !router.middlewares.is_empty() {
             let chain = MiddlewareChain::new(router.middlewares.clone());
@@ -88,27 +88,14 @@ fn setup_app_data(
 fn setup_body(
     route: &Route,
     kwargs: &Bound<'_, PyDict>,
-    params: &matchit::Params<'_, '_>,
     request: &Request,
     py: Python<'_>,
 ) -> PyResult<()> {
-    let mut body_param_name = None;
-
-    for key in route.args.iter() {
-        if key != "app_data"
-            && params
-                .iter()
-                .filter(|(k, _)| *k == key)
-                .collect::<Vec<_>>()
-                .is_empty()
-        {
-            body_param_name = Some(key);
-            break;
+    if let Some(body_name) = &route.data {
+        match route.content_type.as_str() {
+            "application/json" => kwargs.set_item(body_name, request.json(py)?)?,
+            _ => kwargs.set_item(body_name, request.body.clone())?,
         }
-    }
-
-    if let (Some(ref body_name), Ok(ref body)) = (body_param_name, request.json(py)) {
-        kwargs.set_item(body_name, body)?;
     }
     Ok(())
 }
