@@ -1,11 +1,9 @@
 import sqlite3
-from typing import Callable
+from utils import hash_password, create_jwt, check_password
+from middlewares import logger, jwt_middleware
 
-import bcrypt
-from jwt import ExpiredSignatureError, InvalidTokenError, decode, encode
 from oxhttp import (
     HttpServer,
-    Request,
     Response,
     Router,
     Status,
@@ -14,48 +12,12 @@ from oxhttp import (
     static_files,
 )
 
-SECRET = "8b78e057cf6bc3e646097e5c0277f5ccaa2d8ac3b6d4a4d8c73c7f6af02f0ccd"
 
-# database_connection = sqlite3.connect("database.db")
-# database_connection.execute(
-#     """
-#     create table if not exists user (
-#         id integer primary key autoincrement,
-#         username varchar(255) unique,
-#         password varchar(255)
-#     );
-#     """
-# )
-
-
-class AppData:
-    conn = sqlite3.connect("database.db")
-
-
-def create_jwt(user_id: int) -> str:
-    payload = {"user_id": user_id}
-    return encode(payload, SECRET, algorithm="HS256")
-
-
-def decode_jwt(token: str):
-    try:
-        return decode(token, SECRET, algorithms=["HS256"])
-    except (ExpiredSignatureError, InvalidTokenError):
-        return None
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def check_password(hashed_password: str, password: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed_password.encode())
-
-
-def register(cred: dict, app_data: AppData):
+@post("/register", data="user_input")
+def register(user_input, app_data):
     conn = app_data.conn
-    username = cred.get("username")
-    password = cred.get("password")
+    username = user_input.get("username")
+    password = user_input.get("password")
 
     if not username or not password:
         return Status.BAD_REQUEST
@@ -73,7 +35,8 @@ def register(cred: dict, app_data: AppData):
         return Status.CONFLICT
 
 
-def login(cred: dict, app_data: AppData):
+@post("/login", data="cred")
+def login(cred: dict, app_data):
     conn = app_data.conn
     username = cred.get("username")
     password = cred.get("password")
@@ -91,41 +54,33 @@ def login(cred: dict, app_data: AppData):
     return Status.UNAUTHORIZED
 
 
-def user_info(user_id: int, app_data: AppData) -> Response:
+@get("/hello/{name}")
+def hello_world(name):
+    return f"Hello {name}"
+
+
+@get("/me")
+def user_info(user_id: int, app_data) -> Response:
     result = app_data.conn.execute("select * from user where id=?", (user_id,))
     return Response(Status.OK, {"user": result.fetchone()})
 
 
-def logger(request: Request, next: Callable, **kwargs):
-    method = request.method
-    host = request.headers.get("host")
-    uri = request.uri
-    print(f"method:{method} host:{host} uri:{uri}")
-    return next(**kwargs)
+class AppData:
+    def __init__(self):
+        self.conn = sqlite3.connect("database.db")
 
-
-def jwt_middleware(request: Request, next: Callable, **kwargs):
-    token = request.headers.get("authorization", "").replace("Bearer ", "")
-
-    if token:
-        if payload := decode_jwt(token):
-            kwargs["user_id"] = payload["user_id"]
-            return next(**kwargs)
-    return Status.UNAUTHORIZED
-
-
-sec_router = Router()
-sec_router.middleware(logger)
-sec_router.middleware(jwt_middleware)
-sec_router.route(get("/me", user_info))
 
 pub_router = Router()
 pub_router.middleware(logger)
-pub_router.route(post("/login", login))
-pub_router.route(post("/register", register))
-pub_router.route(get("/hello/{name}", lambda name: f"Hello {name}"))
-
+pub_router.routes([hello_world, login, register])
 pub_router.route(static_files("./static", "static"))
+
+
+sec_router = Router()
+sec_router.route(user_info)
+sec_router.middleware(logger)
+sec_router.middleware(jwt_middleware)
+
 
 server = HttpServer(("127.0.0.1", 5555))
 server.app_data(AppData)
