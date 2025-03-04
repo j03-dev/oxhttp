@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use pyo3::prelude::*;
 
 use crate::{into_response::IntoResponse, response::Response};
@@ -27,7 +29,7 @@ impl IntoResponse for Status {
     fn into_response(&self) -> Response {
         Response {
             status: self.clone(),
-            content_type: "text/plain".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
             body: String::new(),
         }
     }

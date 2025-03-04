@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{status::Status, Response};
 use pyo3::{
     prelude::*,
@@ -14,7 +16,7 @@ impl IntoResponse for String {
     fn into_response(&self) -> Response {
         Response {
             status: Status::OK,
-            content_type: "text/plain".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
             body: self.clone(),
         }
     }
@@ -24,7 +26,7 @@ impl IntoResponse for Py<PyDict> {
     fn into_response(&self) -> Response {
         Response {
             status: Status::OK,
-            content_type: "application/json".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
             body: self.to_string(),
         }
     }
@@ -34,7 +36,7 @@ impl IntoResponse for (String, Status) {
     fn into_response(&self) -> Response {
         Response {
             status: self.1.clone(),
-            content_type: "text/plain".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
             body: self.0.clone(),
         }
     }
@@ -44,7 +46,7 @@ impl IntoResponse for (Py<PyDict>, Status) {
     fn into_response(&self) -> Response {
         Response {
             status: self.1.clone(),
-            content_type: "application/json".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
             body: self.0.to_string(),
         }
     }
@@ -54,7 +56,7 @@ impl IntoResponse for i32 {
     fn into_response(&self) -> Response {
         Response {
             status: Status::OK,
-            content_type: "application/json".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
             body: self.to_string(),
         }
     }

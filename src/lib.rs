@@ -8,6 +8,7 @@ mod status;
 
 use handling::request_handler::handle_request;
 use handling::response_handler::handle_response;
+use into_response::IntoResponse;
 use pyo3::exceptions::PyException;
 use request::Request;
 use response::Response;
@@ -35,6 +36,65 @@ use pyo3::prelude::*;
 
 type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
 
+#[derive(Clone)]
+#[pyclass]
+struct Cors {
+    origins: Vec<String>,
+    methods: Vec<String>,
+    headers: Vec<String>,
+}
+
+impl Default for Cors {
+    fn default() -> Self {
+        Self {
+            origins: ["*".to_string()].to_vec(),
+            methods: ["GET, POST, PUT, DELETE, PATCH, OPTIONS".to_string()].to_vec(),
+            headers: ["Content-Type, Authorization".to_string()].to_vec(),
+        }
+    }
+}
+
+#[pymethods]
+impl Cors {
+    #[setter]
+    fn origins(&mut self, origin: Vec<String>) {
+        self.origins = origin;
+    }
+
+    #[setter]
+    fn methods(&mut self, method: Vec<String>) {
+        self.methods = method;
+    }
+
+    #[setter]
+    fn headers(&mut self, header: Vec<String>) {
+        self.headers = header;
+    }
+
+    fn default_configuration(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl IntoResponse for Cors {
+    fn into_response(&self) -> Response {
+        let mut response = Status::NO_CONTENT.into_response();
+        response.header(
+            "Access-Control-Allow-Origin".to_string(),
+            self.origins.join(", "),
+        );
+        response.header(
+            "Access-Control-Allow-Methods".to_string(),
+            self.methods.join(", "),
+        );
+        response.header(
+            "Access-Control-Allow-Headers".to_string(),
+            self.headers.join(", "),
+        );
+        response
+    }
+}
+
 struct ProcessRequest {
     request: Request,
     router: Arc<Router>,
@@ -51,6 +111,7 @@ struct HttpServer {
     app_data: Option<Arc<Py<PyAny>>>,
     max_connections: Arc<Semaphore>,
     channel_capacity: usize,
+    cors: Option<Arc<Cors>>,
 }
 
 #[pymethods]
@@ -64,6 +125,7 @@ impl HttpServer {
             app_data: None,
             max_connections: Arc::new(Semaphore::new(100)),
             channel_capacity: 100,
+            cors: None,
         })
     }
 
@@ -81,10 +143,16 @@ impl HttpServer {
         Ok(())
     }
 
-    #[pyo3(signature=(max_connections = 100, channel_capacity = 100))]
-    fn config(&mut self, max_connections: usize, channel_capacity: usize) -> PyResult<()> {
+    #[pyo3(signature=(max_connections = 100, channel_capacity = 100, cors=None))]
+    fn config(
+        &mut self,
+        max_connections: usize,
+        channel_capacity: usize,
+        cors: Option<PyRef<Cors>>,
+    ) -> PyResult<()> {
         self.max_connections = Arc::new(Semaphore::new(max_connections));
         self.channel_capacity = channel_capacity;
+        self.cors = cors.map(|c| Arc::new(c.clone()));
         Ok(())
     }
 }
@@ -112,6 +180,7 @@ impl HttpServer {
         let request_sender = request_sender.clone();
         let max_connections = self.max_connections.clone();
         let app_data = self.app_data.clone();
+        let cors = self.cors.clone();
 
         tokio::spawn(async move {
             while running_clone.load(Ordering::SeqCst) {
@@ -121,6 +190,7 @@ impl HttpServer {
                 let request_sender = request_sender.clone();
                 let routers = routers.clone();
                 let app_data = app_data.clone();
+                let cors = cors.clone();
 
                 tokio::spawn(async move {
                     let _permit = permit;
@@ -131,6 +201,8 @@ impl HttpServer {
                                 let request_sender = request_sender.clone();
                                 let routers = routers.clone();
                                 let app_data = app_data.clone();
+                                let cors = cors.clone();
+
                                 async move {
                                     handle_request(
                                         req,
@@ -138,6 +210,7 @@ impl HttpServer {
                                         routers,
                                         app_data,
                                         channel_capacity,
+                                        cors,
                                     )
                                     .await
                                 }
@@ -167,6 +240,7 @@ fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Status>()?;
     m.add_class::<Response>()?;
     m.add_class::<Request>()?;
+    m.add_class::<Cors>()?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(post, m)?)?;
     m.add_function(wrap_pyfunction!(delete, m)?)?;

@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{channel, Sender};
 
 use crate::{
     into_response::IntoResponse, request::Request, response::Response, routing::Router,
-    status::Status, MatchitRoute, ProcessRequest,
+    status::Status, Cors, MatchitRoute, ProcessRequest,
 };
 
 pub async fn handle_request(
@@ -19,7 +19,13 @@ pub async fn handle_request(
     routers: Vec<Arc<Router>>,
     app_data: Option<Arc<Py<PyAny>>>,
     channel_capacity: usize,
+    cors: Option<Arc<Cors>>,
 ) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
+    if let (true, Some(cors_header)) = (req.method() == hyper::Method::OPTIONS, cors) {
+        let response = cors_header.into_response();
+        return convert_to_hyper_response(response);
+    }
+
     let sender = request_sender.clone();
     let routers = routers.clone();
 
@@ -79,8 +85,9 @@ async fn convert_hyper_request(
 fn convert_to_hyper_response(
     response: Response,
 ) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
-    HyperResponse::builder()
-        .status(response.status.code())
-        .header("Content-Type", response.content_type)
-        .body(Full::new(Bytes::from(response.body)))
+    let mut response_builder = HyperResponse::builder().status(response.status.code());
+    for (key, value) in response.headers {
+        response_builder = response_builder.header(key, value);
+    }
+    response_builder.body(Full::new(Bytes::from(response.body)))
 }
