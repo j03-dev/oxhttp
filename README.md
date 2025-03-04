@@ -16,12 +16,16 @@ _OxHTTP_ is Python HTTP server library build in Rust - a fast, safe and feature-
 ```python
 from oxhttp import HttpServer, get, Router, Status, Response
 
-router = Router()
 
-router.route(get("/", lambda: Response(Status.OK, "Welcome to OxHTTP!")))
-router.route(
-    get("/hello/{name}", lambda name: Response(Status.OK, {"message": f"Hello, {name}!"}))
-)
+@get("/")
+def welcome():
+    return Response(Status.OK, "Welcome to OxHTTP!")
+
+def hello_world("/hello/{name}")
+    return Response(Status.OK, {"message": f"Hello, {name}!"})
+
+router = Router()
+router.routes([welcome, hello_world])
 
 app = HttpServer(("127.0.0.1", 5555))
 app.attach(router)
