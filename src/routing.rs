@@ -11,23 +11,32 @@ pub struct Route {
     pub method: String,
     pub path: String,
     pub handler: Arc<Py<PyAny>>,
-    pub args: Arc<HashMap<String, Option<String>>>,
+    pub content_type: String,
+    pub data: Option<String>,
+    pub args: Arc<Vec<String>>,
 }
 
 #[pymethods]
 impl Route {
-    fn __repr__(&self) -> String {
-        format!("{:#?}", self)
-    }
-}
-
-impl Route {
+    #[new]
+    #[pyo3(signature=(path, method=None, content_type=None, data=None))]
     pub fn new(
-        method: String,
         path: String,
-        handler: Arc<Py<PyAny>>,
-        py: Python<'_>,
-    ) -> PyResult<Self> {
+        method: Option<String>,
+        content_type: Option<String>,
+        data: Option<String>,
+    ) -> Self {
+        Route {
+            method: method.unwrap_or_else(|| "GET".to_string()),
+            path,
+            handler: Arc::new(Python::with_gil(|py| py.None())),
+            args: Arc::new(Vec::new()),
+            content_type: content_type.unwrap_or_else(|| "application/json".to_string()),
+            data,
+        }
+    }
+
+    fn __call__(&self, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Self> {
         let inspect = PyModule::import(py, "inspect")?;
         let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
         let parameters = sig.getattr("parameters")?;
@@ -57,27 +66,43 @@ impl Route {
             args.insert(name, type_info);
         }
 
-        Ok(Route {
-            method,
-            path,
-            handler,
+        if let Some(data) = self.data.clone() {
+            if !args.contains(&data) {
+                let message = format!("Missing argument '{data}'");
+                return Err(PyException::new_err(message));
+            }
+        }
+
+        Ok(Self {
+            handler: Arc::new(handler),
             args: Arc::new(args),
+            ..self.clone()
         })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:#?}", self.clone())
     }
 }
 
-macro_rules! methods {
+macro_rules! method_decorator {
     ($($method:ident),*) => {
         $(
             #[pyfunction]
-            pub fn $method(path: String, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Route> {
-                Route::new(stringify!($method).to_string().to_uppercase(), path, Arc::new(handler), py)
+            #[pyo3(signature = (path, *, content_type=None, data=None))]
+            pub fn $method(path: String, content_type: Option<String>, data: Option<String>)-> Route{
+                Route::new(
+                    path,
+                    Some(stringify!($method).to_string().to_uppercase()),
+                    content_type,
+                    data,
+                )
             }
-        )*
-    }
+        )+
+    };
 }
 
-methods!(get, post, put, patch, delete);
+method_decorator!(get, post, put, patch, delete);
 
 #[derive(Default, Clone, Debug)]
 #[pyclass]
@@ -103,6 +128,13 @@ impl Router {
         method_router
             .insert(&route.path, route.clone())
             .map_err(|err| PyException::new_err(err.to_string()))?;
+        Ok(())
+    }
+
+    fn routes(&mut self, routes: Vec<PyRef<Route>>) -> PyResult<()> {
+        for route in routes {
+            self.route(route)?;
+        }
         Ok(())
     }
 }
@@ -148,5 +180,12 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
         None,
     )?;
 
-    get(format!("/{path}/{{*path}}"), handler.into(), py)
+    let route = Route::new(
+        format!("/{path}/{{*path}}"),
+        Some("GET".to_string()),
+        Some("text/plain".to_string()),
+        None,
+    );
+
+    route.__call__(handler.into(), py)
 }

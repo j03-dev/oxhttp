@@ -25,7 +25,6 @@ jobs:
       matrix:
         platform:
           - target: x86_64
-          - target: x86
           - target: aarch64
           - target: armv7
           - target: s390x
@@ -81,7 +80,6 @@ jobs:
       matrix:
         platform:
           - target: x64
-          - target: x86
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
