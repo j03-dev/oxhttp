@@ -21,11 +21,12 @@ from oxhttp import HttpServer, get, Router, Status, Response
 def welcome():
     return Response(Status.OK, "Welcome to OxHTTP!")
 
-def hello_world("/hello/{name}")
+@get("/hello/{name}")
+def hello(name)
     return Response(Status.OK, {"message": f"Hello, {name}!"})
 
 router = Router()
-router.routes([welcome, hello_world])
+router.routes([welcome, hello])
 
 app = HttpServer(("127.0.0.1", 5555))
 app.attach(router)
