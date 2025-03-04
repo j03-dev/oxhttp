@@ -56,6 +56,11 @@ impl Default for Cors {
 
 #[pymethods]
 impl Cors {
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
     #[setter]
     fn origins(&mut self, origin: Vec<String>) {
         self.origins = origin;
@@ -69,10 +74,6 @@ impl Cors {
     #[setter]
     fn headers(&mut self, header: Vec<String>) {
         self.headers = header;
-    }
-
-    fn default_configuration(&self) -> Self {
-        Self::default()
     }
 }
 
