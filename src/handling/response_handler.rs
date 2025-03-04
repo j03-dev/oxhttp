@@ -34,7 +34,13 @@ pub async fn handle_response(running: Arc<AtomicBool>, rx: &mut Receiver<Process
                     .body(e.to_string()),
             };
 
-            _ = process_request.response_sender.send(response).await;
+            let final_response = if let Some(cors) = process_request.cors {
+                cors.apply_to_response(response)
+            } else {
+                response
+            };
+
+            _ = process_request.response_sender.send(final_response).await;
         }
     }
 }

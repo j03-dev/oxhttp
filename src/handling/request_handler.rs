@@ -9,8 +9,8 @@ use pyo3::{Py, PyAny};
 use tokio::sync::mpsc::{channel, Sender};
 
 use crate::{
-    into_response::IntoResponse, request::Request, response::Response, routing::Router,
-    status::Status, Cors, MatchitRoute, ProcessRequest,
+    cors::Cors, into_response::IntoResponse, request::Request, response::Response, routing::Router,
+    status::Status, MatchitRoute, ProcessRequest,
 };
 
 pub async fn handle_request(
@@ -21,13 +21,10 @@ pub async fn handle_request(
     channel_capacity: usize,
     cors: Option<Arc<Cors>>,
 ) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
-    if let (true, Some(cors_header)) = (req.method() == hyper::Method::OPTIONS, cors) {
-        let response = cors_header.into_response();
+    if req.method() == hyper::Method::OPTIONS && cors.is_some() {
+        let response = cors.as_ref().unwrap().into_response();
         return convert_to_hyper_response(response);
     }
-
-    let sender = request_sender.clone();
-    let routers = routers.clone();
 
     let request = convert_hyper_request(req).await.unwrap();
 
@@ -43,9 +40,10 @@ pub async fn handle_request(
                 route,
                 response_sender,
                 app_data,
+                cors: cors.clone(),
             };
 
-            if sender.send(process_request).await.is_ok() {
+            if request_sender.send(process_request).await.is_ok() {
                 if let Some(response) = respond_receive.recv().await {
                     return convert_to_hyper_response(response);
                 }
@@ -54,7 +52,13 @@ pub async fn handle_request(
         }
     }
 
-    convert_to_hyper_response(Status::NOT_FOUND.into_response())
+    let response = if let Some(cors_config) = cors {
+        cors_config.apply_to_response(Status::NOT_FOUND.into_response())
+    } else {
+        Status::NOT_FOUND.into_response()
+    };
+
+    convert_to_hyper_response(response)
 }
 
 async fn convert_hyper_request(
