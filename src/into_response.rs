@@ -1,11 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{status::Status, Response};
-use pyo3::{
-    prelude::*,
-    types::{PyAny, PyDict},
-    Py,
-};
+use pyo3::{prelude::*, types::PyAny, Py};
 
 pub trait IntoResponse {
     #[allow(clippy::wrong_self_convention)]
