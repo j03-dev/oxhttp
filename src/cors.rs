@@ -1,7 +1,7 @@
 use crate::{into_response::IntoResponse, response::Response, status::Status};
 use pyo3::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[pyclass]
 pub struct Cors {
     pub origins: Vec<String>,
@@ -53,6 +53,10 @@ impl Cors {
     #[setter]
     fn max_age(&mut self, age: u32) {
         self.max_age = age;
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:#?}", self.clone())
     }
 }
 
