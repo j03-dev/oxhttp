@@ -22,7 +22,7 @@ def welcome():
     return Response(Status.OK, "Welcome to OxHTTP!")
 
 @get("/hello/{name}")
-def hello(name)
+def hello(name):
     return Response(Status.OK, {"message": f"Hello, {name}!"})
 
 router = Router()
