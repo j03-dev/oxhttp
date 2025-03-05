@@ -22,7 +22,7 @@ impl IntoResponse for String {
     }
 }
 
-impl IntoResponse for Py<PyDict> {
+impl IntoResponse for PyObject {
     fn into_response(&self) -> Response {
         Response {
             status: Status::OK,
@@ -42,22 +42,12 @@ impl IntoResponse for (String, Status) {
     }
 }
 
-impl IntoResponse for (Py<PyDict>, Status) {
+impl IntoResponse for (PyObject, Status) {
     fn into_response(&self) -> Response {
         Response {
             status: self.1.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
             body: self.0.to_string(),
-        }
-    }
-}
-
-impl IntoResponse for i32 {
-    fn into_response(&self) -> Response {
-        Response {
-            status: Status::OK,
-            headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
-            body: self.to_string(),
         }
     }
 }
@@ -83,9 +73,8 @@ pub fn convert_to_response(result: Py<PyAny>, py: Python<'_>) -> PyResult<Respon
         PyRef<'_, Response>,
         PyRef<'_, Status>,
         (String, Status),
-        (Py<PyDict>, Status),
-        Py<PyDict>,
+        (PyObject, Status),
         String,
-        i32
+        PyObject
     )
 }

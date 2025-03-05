@@ -36,7 +36,7 @@ def register(user_input, app_data):
 
 
 @post("/login", data="cred")
-def login(cred: dict, app_data):
+def login(cred, app_data):
     conn = app_data.conn
     username = cred.get("username")
     password = cred.get("password")
@@ -59,6 +59,12 @@ def hello_world(name):
     return f"Hello {name}"
 
 
+@get("/add")
+def add(app_data):
+    app_data.n += 1
+    return app_data.n
+
+
 @get("/me")
 def user_info(user_id: int, app_data) -> Response:
     result = app_data.conn.execute("select * from user where id=?", (user_id,))
@@ -68,11 +74,12 @@ def user_info(user_id: int, app_data) -> Response:
 class AppData:
     def __init__(self):
         self.conn = sqlite3.connect("database.db")
+        self.n = 0
 
 
 pub_router = Router()
 pub_router.middleware(logger)
-pub_router.routes([hello_world, login, register])
+pub_router.routes([hello_world, login, register, add])
 pub_router.route(static_files("./static", "static"))
 
 
@@ -83,7 +90,7 @@ sec_router.middleware(jwt_middleware)
 
 
 server = HttpServer(("127.0.0.1", 5555))
-server.app_data(AppData)
+server.app_data(AppData())
 server.attach(sec_router)
 server.attach(pub_router)
 
