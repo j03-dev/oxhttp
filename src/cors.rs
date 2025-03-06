@@ -61,10 +61,10 @@ impl Cors {
 }
 
 impl IntoResponse for Cors {
-    fn into_response(&self) -> Response {
-        let mut response = Status::NO_CONTENT.into_response();
+    fn into_response(&self) -> PyResult<Response> {
+        let mut response = Status::NO_CONTENT.into_response()?;
         self.apply_headers(&mut response);
-        response
+        Ok(response)
     }
 }
 
@@ -97,8 +97,8 @@ impl Cors {
         );
     }
 
-    pub fn apply_to_response(&self, mut response: Response) -> Response {
+    pub fn apply_to_response(&self, mut response: Response) -> PyResult<Response> {
         self.apply_headers(&mut response);
-        response
+        Ok(response)
     }
 }

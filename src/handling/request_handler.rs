@@ -22,7 +22,7 @@ pub async fn handle_request(
     cors: Option<Arc<Cors>>,
 ) -> Result<HyperResponse<Full<Bytes>>, hyper::http::Error> {
     if req.method() == hyper::Method::OPTIONS && cors.is_some() {
-        let response = cors.as_ref().unwrap().into_response();
+        let response = cors.as_ref().unwrap().into_response().unwrap();
         return convert_to_hyper_response(response);
     }
 
@@ -53,12 +53,12 @@ pub async fn handle_request(
     }
 
     let response = if let Some(cors_config) = cors {
-        cors_config.apply_to_response(Status::NOT_FOUND.into_response())
+        cors_config.apply_to_response(Status::NOT_FOUND.into_response().unwrap())
     } else {
         Status::NOT_FOUND.into_response()
     };
 
-    convert_to_hyper_response(response)
+    convert_to_hyper_response(response.unwrap())
 }
 
 async fn convert_hyper_request(

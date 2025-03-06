@@ -1,6 +1,7 @@
 mod cors;
 mod handling;
 mod into_response;
+mod json;
 mod middleware;
 mod request;
 mod response;
