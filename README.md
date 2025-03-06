@@ -70,12 +70,14 @@ class AppState:
 app = HttpServer(("127.0.0.1", 5555))
 app.app_data(AppState)
 
+@get("/count")
 def handler(app_data):
     app_data.counter += 1
     return {"count": app_data.counter}
 
+
 router = Router()
-router.route(get("/count", handler))
+router.route(handler)
 ```
 
 Todo:
