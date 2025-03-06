@@ -43,9 +43,13 @@ def auth_middleware(request, next, **kwargs):
         return Status.UNAUTHORIZED
     return next(**kwargs)
 
+@get("/protected")
+def protected():
+    return "This is protected!"
+
 router = Router()
 router.middleware(auth_middleware)
-router.route(get("/protected", lambda: "This is protected!"))
+router.route(protected)
 ```
 
 ## Static Files
