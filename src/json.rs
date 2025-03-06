@@ -4,19 +4,19 @@ use pyo3::{
 };
 
 pub fn dumps(data: &PyObject) -> PyResult<String> {
-    Python::with_gil(|py| -> PyResult<String> {
-        let json = PyModule::import(py, "orjson")?;
-        let json_data = json
+    Python::with_gil(|py| {
+        let orjson_module = PyModule::import(py, "orjson")?;
+        let serialized_data = orjson_module
             .call_method1("dumps", (data,))?
             .call_method1("decode", ("utf-8",))?;
-        json_data.extract()
+        serialized_data.extract()
     })
 }
 
 pub fn loads(data: &str) -> PyResult<Py<PyDict>> {
-    Python::with_gil(|py| -> PyResult<Py<PyDict>> {
-        let json = PyModule::import(py, "orjson")?;
-        let json_data = json.call_method1("loads", (data,))?;
-        json_data.extract()
+    Python::with_gil(|py| {
+        let orjson_module = PyModule::import(py, "orjson")?;
+        let deserialized_data = orjson_module.call_method1("loads", (data,))?;
+        deserialized_data.extract()
     })
 }
