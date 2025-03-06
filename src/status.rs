@@ -26,12 +26,12 @@ macro_rules! status_codes {
 }
 
 impl IntoResponse for Status {
-    fn into_response(&self) -> Response {
-        Response {
+    fn into_response(&self) -> PyResult<Response> {
+        Ok(Response {
             status: self.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
             body: String::new(),
-        }
+        })
     }
 }
 

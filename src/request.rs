@@ -24,9 +24,8 @@ impl Request {
     }
 
     pub fn json(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let json = PyModule::import(py, "json")?;
-        if let Some(body) = &self.body {
-            json.call_method1("loads", (body,))?.extract()
+        if let Some(ref body) = self.body {
+            crate::json::loads(body)
         } else {
             Ok(PyDict::new(py).into())
         }

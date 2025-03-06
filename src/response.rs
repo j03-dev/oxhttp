@@ -16,22 +16,18 @@ pub struct Response {
 impl Response {
     #[new]
     #[pyo3(signature=(status, body, content_type="application/json".to_string()))]
-    pub fn new(
-        status: PyRef<'_, Status>,
-        body: PyObject,
-        content_type: String,
-        py: Python,
-    ) -> Self {
-        Self {
+    pub fn new(status: PyRef<'_, Status>, body: PyObject, content_type: String) -> PyResult<Self> {
+        let body = if content_type == "application/json" {
+            crate::json::dumps(&body)?
+        } else {
+            body.to_string()
+        };
+
+        Ok(Self {
             status: status.clone(),
-            body: {
-                match body.extract(py) {
-                    Ok(body) => body,
-                    _ => body.to_string(),
-                }
-            },
+            body,
             headers: HashMap::from([("Content-Type".to_string(), content_type)]),
-        }
+        })
     }
 
     pub fn header(&mut self, key: String, value: String) {
@@ -40,8 +36,8 @@ impl Response {
 }
 
 impl IntoResponse for Response {
-    fn into_response(&self) -> Response {
-        self.clone()
+    fn into_response(&self) -> PyResult<Response> {
+        Ok(self.clone())
     }
 }
 
