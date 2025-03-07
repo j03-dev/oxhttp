@@ -1,4 +1,4 @@
-from oxhttp import Status
+from oxapy import Status
 from utils import decode_jwt
 
 

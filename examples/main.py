@@ -2,7 +2,7 @@ import sqlite3
 from utils import hash_password, create_jwt, check_password
 from middlewares import jwt_middleware
 
-from oxhttp import (
+from oxapy import (
     HttpServer,
     Response,
     Router,

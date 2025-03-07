@@ -3,7 +3,7 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "oxhttp"
+name = "oxapy"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -11,7 +11,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
-description = "OxHttp is http server for python build in rust"
+description = "OxAPY is http server for python build in rust"
 dependencies = ["orjson>=3.10.15"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
