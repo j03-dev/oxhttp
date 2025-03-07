@@ -136,28 +136,30 @@ impl Router {
 }
 
 #[pyfunction]
-pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
+pub fn static_file(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
     let pathlib = py.import("pathlib")?;
     let oxhttp = py.import("oxhttp")?;
+    let mimetypes = py.import("mimetypes")?;
 
     let globals = &PyDict::new(py);
     globals.set_item("Path", pathlib.getattr("Path")?)?;
     globals.set_item("directory", directory)?;
     globals.set_item("Status", oxhttp.getattr("Status")?)?;
     globals.set_item("Response", oxhttp.getattr("Response")?)?;
+    globals.set_item("mimetypes", mimetypes)?;
 
-    let handler = py.eval(
+    py.run(
         c_str!(
-            r#"lambda path: \
-                Response(
-                    Status.OK,
-                    open(Path(directory) / path, 'rb')\
-                        .read()\
-                        .decode('utf-8'),
-                    "text/plain",
-                )\
-                if (Path(directory) / path).exists()\
-                else Status.NOT_FOUND"#
+            r#"
+def static_file(path):
+    file_path = f"{directory}/{path}"
+    try:
+        with open(file_path, "rb") as f: content = f.read()
+        content_type, _ = mimetypes.guess_type(file_path)
+        return Response(Status.OK, content, content_type or "application/octet-stream")
+    except FileNotFoundError:
+        return Response(Status.NOT_FOUND, "File not found")
+"#
         ),
         Some(globals),
         None,
@@ -169,6 +171,8 @@ pub fn static_files(directory: String, path: String, py: Python<'_>) -> PyResult
         Some("text/plain".to_string()),
         None,
     );
+
+    let handler = globals.get_item("static_file")?.unwrap();
 
     route.__call__(handler.into(), py)
 }

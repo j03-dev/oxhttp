@@ -14,7 +14,7 @@ use handling::response_handler::handle_response;
 use pyo3::exceptions::PyException;
 use request::Request;
 use response::Response;
-use routing::{delete, get, patch, post, put, static_files, Route, Router};
+use routing::{delete, get, patch, post, put, static_file, Route, Router};
 use status::Status;
 
 use hyper::server::conn::http1;
@@ -193,7 +193,7 @@ fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(delete, m)?)?;
     m.add_function(wrap_pyfunction!(patch, m)?)?;
     m.add_function(wrap_pyfunction!(put, m)?)?;
-    m.add_function(wrap_pyfunction!(static_files, m)?)?;
+    m.add_function(wrap_pyfunction!(static_file, m)?)?;
 
     Ok(())
 }

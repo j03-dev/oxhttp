@@ -56,7 +56,7 @@ router.route(protected)
 
 ```python
 router = Router()
-router.route(static_files("./static", "static"))
+router.route(static_file("./static", "static"))
 # Serves files from ./static directory at /static URL path
 ```
 

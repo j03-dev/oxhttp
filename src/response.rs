@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyBytes};
 
 use crate::{into_response::IntoResponse, status::Status};
 
@@ -8,7 +8,7 @@ use crate::{into_response::IntoResponse, status::Status};
 #[pyclass]
 pub struct Response {
     pub status: Status,
-    pub body: String,
+    pub body: Vec<u8>,
     pub headers: HashMap<String, String>,
 }
 
@@ -16,11 +16,18 @@ pub struct Response {
 impl Response {
     #[new]
     #[pyo3(signature=(status, body, content_type="application/json".to_string()))]
-    pub fn new(status: PyRef<'_, Status>, body: PyObject, content_type: String) -> PyResult<Self> {
-        let body = if content_type == "application/json" {
-            crate::json::dumps(&body)?
+    pub fn new(
+        status: PyRef<'_, Status>,
+        body: PyObject,
+        content_type: String,
+        py: Python<'_>,
+    ) -> PyResult<Self> {
+        let body = if let Ok(bytes) = body.extract::<Py<PyBytes>>(py) {
+            bytes.as_bytes(py).to_vec()
+        } else if content_type == "application/json" {
+            crate::json::dumps(&body)?.into_bytes()
         } else {
-            body.to_string()
+            body.to_string().into_bytes()
         };
 
         Ok(Self {
@@ -43,7 +50,7 @@ impl IntoResponse for Response {
 
 impl Response {
     pub fn body(mut self, body: String) -> Self {
-        self.body = body;
+        self.body = body.into_bytes();
         self
     }
 }
