@@ -9,7 +9,7 @@ from oxhttp import (
     Status,
     get,
     post,
-    static_files,
+    static_file,
 )
 
 
@@ -79,7 +79,7 @@ class AppData:
 
 pub_router = Router()
 pub_router.routes([hello_world, login, register, add])
-pub_router.route(static_files("./static", "static"))
+pub_router.route(static_file("./static", "static"))
 
 sec_router = Router()
 sec_router.route(user_info)
