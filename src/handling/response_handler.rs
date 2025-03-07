@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use pyo3::{
     types::{PyAnyMethods, PyDict},
@@ -19,29 +16,32 @@ use crate::{
     MatchitRoute, ProcessRequest,
 };
 
-pub async fn handle_response(running: Arc<AtomicBool>, rx: &mut Receiver<ProcessRequest>) {
-    while running.load(Ordering::SeqCst) {
-        if let Ok(process_request) = rx.try_recv() {
-            let response = match process_response(
-                &process_request.router,
-                process_request.route,
-                &process_request.request,
-                process_request.app_data,
-            ) {
-                Ok(response) => response,
-                Err(e) => Status::INTERNAL_SERVER_ERROR
-                    .into_response()
-                    .unwrap()
-                    .body(e.to_string()),
-            };
+pub async fn handle_response(shutdown_rx: &mut Receiver<()>, rx: &mut Receiver<ProcessRequest>) {
+    loop {
+        tokio::select! {
+            Some(process_request) = rx.recv() => {
+                let response = match process_response(
+                    &process_request.router,
+                    process_request.route,
+                    &process_request.request,
+                    process_request.app_data,
+                ) {
+                    Ok(response) => response,
+                    Err(e) => Status::INTERNAL_SERVER_ERROR
+                        .into_response()
+                        .unwrap()
+                        .body(e.to_string()),
+                };
 
-            let final_response = if let Some(cors) = process_request.cors {
-                cors.apply_to_response(response).unwrap()
-            } else {
-                response
-            };
+                let final_response = if let Some(cors) = process_request.cors {
+                    cors.apply_to_response(response).unwrap()
+                } else {
+                    response
+                };
 
-            _ = process_request.response_sender.send(final_response).await;
+                _ = process_request.response_sender.send(final_response).await;
+            }
+            _ = shutdown_rx.recv() => {break}
         }
     }
 }

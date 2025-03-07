@@ -109,10 +109,13 @@ impl HttpServer {
         let channel_capacity = self.channel_capacity;
 
         let (request_sender, mut request_receiver) = channel::<ProcessRequest>(channel_capacity);
+        let (shutdown_tx, mut shutdown_rx) = channel::<()>(1);
 
         ctrlc::set_handler(move || {
             println!("\nReceived Ctrl+C! Shutting Down...");
             r.store(false, Ordering::SeqCst);
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(shutdown_tx.send(())).unwrap();
         })
         .ok();
 
@@ -171,7 +174,7 @@ impl HttpServer {
             }
         });
 
-        handle_response(running, &mut request_receiver).await;
+        handle_response(&mut shutdown_rx, &mut request_receiver).await;
 
         Ok(())
     }
