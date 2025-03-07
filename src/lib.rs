@@ -82,7 +82,9 @@ impl HttpServer {
     }
 
     fn run(&self) -> PyResult<()> {
-        let runtime = tokio::runtime::Runtime::new()?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
         runtime.block_on(async move { self.run_server().await })?;
         Ok(())
     }
