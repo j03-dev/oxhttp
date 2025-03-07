@@ -35,7 +35,7 @@ impl Route {
         }
     }
 
-    pub fn __call__(&self, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Self> {
+    fn __call__(&self, handler: Py<PyAny>, py: Python<'_>) -> PyResult<Self> {
         let inspect = PyModule::import(py, "inspect")?;
         let sig = inspect.call_method("signature", (handler.clone_ref(py),), None)?;
         let parameters = sig.getattr("parameters")?;
