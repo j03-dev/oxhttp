@@ -138,14 +138,14 @@ impl Router {
 #[pyfunction]
 pub fn static_file(directory: String, path: String, py: Python<'_>) -> PyResult<Route> {
     let pathlib = py.import("pathlib")?;
-    let oxhttp = py.import("oxhttp")?;
+    let oxapy = py.import("oxapy")?;
     let mimetypes = py.import("mimetypes")?;
 
     let globals = &PyDict::new(py);
     globals.set_item("Path", pathlib.getattr("Path")?)?;
     globals.set_item("directory", directory)?;
-    globals.set_item("Status", oxhttp.getattr("Status")?)?;
-    globals.set_item("Response", oxhttp.getattr("Response")?)?;
+    globals.set_item("Status", oxapy.getattr("Status")?)?;
+    globals.set_item("Response", oxapy.getattr("Response")?)?;
     globals.set_item("mimetypes", mimetypes)?;
 
     py.run(

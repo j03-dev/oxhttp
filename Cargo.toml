@@ -1,11 +1,11 @@
 [package]
-name = "oxhttp"
+name = "oxapy"
 version = "0.2.9"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "oxhttp"
+name = "oxapy"
 crate-type = ["cdylib"]
 
 [dependencies]

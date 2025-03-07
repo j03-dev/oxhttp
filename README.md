@@ -1,6 +1,6 @@
-# OxHTTP
+# OxAPY
 
-_OxHTTP_ is Python HTTP server library build in Rust - a fast, safe and feature-rich HTTP server implementation.
+_OxAPY is Python HTTP server library build in Rust - a fast, safe and feature-rich HTTP server implementation.
 
 ## Features
 
@@ -14,12 +14,12 @@ _OxHTTP_ is Python HTTP server library build in Rust - a fast, safe and feature-
 ## Basic Example
 
 ```python
-from oxhttp import HttpServer, get, Router, Status, Response
+from oxapy import HttpServer, get, Router, Status, Response
 
 
 @get("/")
 def welcome():
-    return Response(Status.OK, "Welcome to OxHTTP!")
+    return Response(Status.OK, "Welcome to OxAPY!")
 
 @get("/hello/{name}")
 def hello(name):

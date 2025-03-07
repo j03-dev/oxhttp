@@ -183,7 +183,7 @@ impl HttpServer {
 }
 
 #[pymodule]
-fn oxhttp(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn oxapy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HttpServer>()?;
     m.add_class::<Router>()?;
     m.add_class::<Status>()?;
