@@ -1,6 +1,6 @@
 import sqlite3
 from utils import hash_password, create_jwt, check_password
-from middlewares import logger, jwt_middleware
+from middlewares import jwt_middleware
 
 from oxhttp import (
     HttpServer,
@@ -78,16 +78,12 @@ class AppData:
 
 
 pub_router = Router()
-pub_router.middleware(logger)
 pub_router.routes([hello_world, login, register, add])
 pub_router.route(static_files("./static", "static"))
 
-
 sec_router = Router()
 sec_router.route(user_info)
-sec_router.middleware(logger)
 sec_router.middleware(jwt_middleware)
-
 
 server = HttpServer(("127.0.0.1", 5555))
 server.app_data(AppData())
