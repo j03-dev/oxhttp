@@ -13,7 +13,7 @@ impl IntoResponse for String {
         Ok(Response {
             status: Status::OK,
             headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
-            body: self.clone(),
+            body: self.clone().into_bytes(),
         })
     }
 }
@@ -23,7 +23,7 @@ impl IntoResponse for PyObject {
         Ok(Response {
             status: Status::OK,
             headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
-            body: crate::json::dumps(self)?,
+            body: crate::json::dumps(self)?.into_bytes(),
         })
     }
 }
@@ -33,7 +33,7 @@ impl IntoResponse for (String, Status) {
         Ok(Response {
             status: self.1.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
-            body: self.0.clone(),
+            body: self.0.clone().into_bytes(),
         })
     }
 }
@@ -43,7 +43,7 @@ impl IntoResponse for (PyObject, Status) {
         Ok(Response {
             status: self.1.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
-            body: crate::json::dumps(&self.0)?,
+            body: crate::json::dumps(&self.0)?.into_bytes(),
         })
     }
 }

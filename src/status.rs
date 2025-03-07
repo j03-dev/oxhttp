@@ -30,7 +30,7 @@ impl IntoResponse for Status {
         Ok(Response {
             status: self.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
-            body: String::new(),
+            body: Vec::new(),
         })
     }
 }
