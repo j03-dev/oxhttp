@@ -7,6 +7,7 @@ mod request;
 mod response;
 mod routing;
 mod status;
+mod templating;
 
 use cors::Cors;
 use handling::request_handler::handle_request;
@@ -22,6 +23,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 
 use matchit::Match;
+use templating::templating_submodule;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Semaphore;
@@ -196,6 +198,8 @@ fn oxapy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(patch, m)?)?;
     m.add_function(wrap_pyfunction!(put, m)?)?;
     m.add_function(wrap_pyfunction!(static_file, m)?)?;
+
+    templating_submodule(m)?;
 
     Ok(())
 }

@@ -10,3 +10,8 @@ def jwt_middleware(request, next, **kwargs):
             kwargs["user_id"] = payload["user_id"]
             return next(**kwargs)
     return Status.UNAUTHORIZED
+
+
+def logger(request, next, **kwargs):
+    print(request.method, request.uri)
+    return next(**kwargs)
