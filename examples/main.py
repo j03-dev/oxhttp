@@ -72,17 +72,17 @@ def user_info(user_id: int, app_data) -> Response:
     return Response(Status.OK, {"user": result.fetchone()})
 
 
-@get("/tera")
-def tera(app_data):
-    return Response(
-        Status.OK,
-        app_data.tera.render("index.html", {"name": "world"}),
-        content_type="text/html",
-    )
+# @get("/")
+# def index(app_data):
+#     return Response(
+#         Status.OK,
+#         app_data.tera.render("index.html", {"name": "world"}),
+#         content_type="text/html",
+#     )
 
 
-@get("/jinja")
-def jinja(app_data):
+@get("/")
+def index(app_data):
     return Response(
         Status.OK,
         app_data.jinja.render("index.html", {"name": "world"}),
@@ -99,7 +99,7 @@ class AppData:
 
 
 pub_router = Router()
-pub_router.routes([hello_world, login, register, add, jinja, tera])
+pub_router.routes([hello_world, login, register, add, index])
 pub_router.route(static_file("./static", "static"))
 
 sec_router = Router()
