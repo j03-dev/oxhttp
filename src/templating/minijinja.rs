@@ -47,14 +47,11 @@ impl Jinja {
         py: Python<'_>,
     ) -> PyResult<String> {
         let template = to_py_exception(self.engine.get_template(&template_name))?;
-
         let mut ctx_values: HashMap<String, serde_json::Value> = HashMap::new();
-
         if let Some(context) = context {
             let serialize = crate::json::dumps(&context.into_py_any(py)?)?;
             ctx_values = to_py_exception(serde_json::from_str(&serialize))?;
         }
-
         to_py_exception(template.render(ctx_values))
     }
 }
