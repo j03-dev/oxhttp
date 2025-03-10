@@ -40,6 +40,10 @@ use pyo3::prelude::*;
 
 type MatchitRoute = &'static Match<'static, 'static, &'static Route>;
 
+fn to_py_exception<T, E: ToString>(result: Result<T, E>) -> PyResult<T> {
+    result.map_err(|err| PyException::new_err(err.to_string()))
+}
+
 struct ProcessRequest {
     request: Request,
     router: Arc<Router>,
@@ -145,7 +149,7 @@ impl HttpServer {
 
                 tokio::spawn(async move {
                     let _permit = permit;
-                    http1::Builder::new()
+                    let result = http1::Builder::new()
                         .serve_connection(
                             io,
                             service_fn(move |req| {
@@ -167,13 +171,8 @@ impl HttpServer {
                                 }
                             }),
                         )
-                        .await
-                        .map_err(|err| {
-                            let message = format!("Error serving connection {err}");
-                            PyException::new_err(message)
-                        })?;
-
-                    Ok::<(), PyErr>(())
+                        .await;
+                    to_py_exception(result)
                 });
             }
         });

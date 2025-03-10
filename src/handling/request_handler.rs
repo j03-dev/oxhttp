@@ -93,5 +93,5 @@ fn convert_to_hyper_response(
     for (key, value) in response.headers {
         response_builder = response_builder.header(key, value);
     }
-    response_builder.body(Full::new(Bytes::from(response.body)))
+    response_builder.body(Full::new(response.body))
 }

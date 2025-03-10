@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use hyper::body::Bytes;
 use pyo3::{prelude::*, types::PyBytes};
 
 use crate::{into_response::IntoResponse, status::Status};
@@ -8,7 +9,7 @@ use crate::{into_response::IntoResponse, status::Status};
 #[pyclass]
 pub struct Response {
     pub status: Status,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub headers: HashMap<String, String>,
 }
 
@@ -23,11 +24,11 @@ impl Response {
         py: Python<'_>,
     ) -> PyResult<Self> {
         let body = if let Ok(bytes) = body.extract::<Py<PyBytes>>(py) {
-            bytes.as_bytes(py).to_vec()
+            bytes.as_bytes(py).to_vec().into()
         } else if content_type == "application/json" {
-            crate::json::dumps(&body)?.into_bytes()
+            crate::json::dumps(&body)?.into()
         } else {
-            body.to_string().into_bytes()
+            body.to_string().into()
         };
 
         Ok(Self {
@@ -50,7 +51,7 @@ impl IntoResponse for Response {
 
 impl Response {
     pub fn body(mut self, body: String) -> Self {
-        self.body = body.into_bytes();
+        self.body = body.into();
         self
     }
 }

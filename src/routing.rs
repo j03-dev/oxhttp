@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem::transmute, sync::Arc};
 
 use pyo3::{exceptions::PyException, ffi::c_str, prelude::*, pyclass, types::PyDict, Py, PyAny};
 
-use crate::middleware::Middleware;
+use crate::{middleware::Middleware, to_py_exception};
 
 #[derive(Clone, Debug)]
 #[pyclass]
@@ -108,9 +108,7 @@ impl Router {
 
     fn route(&mut self, route: PyRef<Route>) -> PyResult<()> {
         let method_router = self.routes.entry(route.method.clone()).or_default();
-        method_router
-            .insert(&route.path, route.clone())
-            .map_err(|err| PyException::new_err(err.to_string()))?;
+        to_py_exception(method_router.insert(&route.path, route.clone()))?;
         Ok(())
     }
 

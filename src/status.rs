@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use hyper::body::Bytes;
 use pyo3::prelude::*;
 
 use crate::{into_response::IntoResponse, response::Response};
@@ -30,7 +31,7 @@ impl IntoResponse for Status {
         Ok(Response {
             status: self.clone(),
             headers: HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
-            body: Vec::new(),
+            body: Bytes::new(),
         })
     }
 }
