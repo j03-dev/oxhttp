@@ -72,11 +72,20 @@ def user_info(user_id: int, app_data) -> Response:
     return Response(Status.OK, {"user": result.fetchone()})
 
 
+# @get("/")
+# def index(app_data):
+#     return Response(
+#         Status.OK,
+#         app_data.tera.render("index.html", {"name": "world"}),
+#         content_type="text/html",
+#     )
+
+
 @get("/")
 def index(app_data):
     return Response(
         Status.OK,
-        app_data.tera.render("index.html", {"name": "world"}),
+        app_data.jinja.render("index.html", {"name": "world"}),
         content_type="text/html",
     )
 
@@ -86,6 +95,7 @@ class AppData:
         self.conn = sqlite3.connect("database.db")
         self.n = 0
         self.tera = templating.Tera("./templates/**/*.html")
+        self.jinja = templating.Jinja("./templates/**/*.html")
 
 
 pub_router = Router()
